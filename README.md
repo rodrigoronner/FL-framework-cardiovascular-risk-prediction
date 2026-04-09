@@ -2,8 +2,6 @@
 
 > **Paper:** *Overcoming Clinical Data Heterogeneity: A Secure Federated Framework for Cardiovascular Risk Prediction*
 > **Journal:** iSys – Revista Brasileira de Sistemas de Informação (Brazilian Journal of Information Systems), 2025
-> **Authors:** Rodrigo Tertulino · Ricardo Almeida · Laércio Alencar
-> **Institution:** IFRN – Federal Institute of Education, Science and Technology of Rio Grande do Norte
 
 ---
 
@@ -11,7 +9,7 @@
 
 FedCVR is a federated learning framework designed for cardiovascular risk prediction across institutionally siloed, heterogeneous clinical datasets. It addresses two key challenges simultaneously:
 
-**Non-IID data heterogeneity** — real hospital datasets differ in feature distributions, class imbalance, and local sample sizes. FedCVR uses a FedProx-style proximal term on each client to penalise excessive drift from the global model.
+**Non-IID data heterogeneity** — real hospital datasets differ in feature distributions, class imbalance, and local sample sizes. FedCVR uses a FedProx-style proximal term on each client to penalize excessive drift from the global model.
 
 **Privacy preservation** — raw patient gradients can leak sensitive information. FedCVR applies client-side Differential Privacy via Opacus (per-sample gradient clipping + calibrated Gaussian noise) before any update leaves a client.
 
@@ -49,7 +47,7 @@ fedcvr/
 │   ├── model.py              # 3-layer DNN (logit output)
 │   ├── client.py             # FedCVRClient – FedProx + Opacus DP
 │   ├── strategy.py           # FedCVRStrategy – Adam server aggregation
-│   └── data_utils.py         # Data loading, harmonisation, preprocessing
+│   └── data_utils.py         # Data loading, harmonization, preprocessing
 │
 ├── experiments/              # Reproducible experiment scripts
 │   ├── run_comparison.py     # Investigation 1: FedCVR vs baselines
@@ -80,7 +78,7 @@ Binary cross-entropy with logits (`BCEWithLogitsLoss`) is used with a class-imba
 
 ### Client Update (FedProx + DP)
 
-Each client minimises:
+Each client minimizes:
 
 ```
 L_local(w) = L_CE(w) + (μ/2) · ‖w − w_global‖²
@@ -113,7 +111,7 @@ Five publicly available cardiovascular datasets simulate an institutionally silo
 | 3 | Heart Disease Prediction | ~270 | Mixed, imbalanced |
 | 4 | Hungarian | ~294 | European clinical |
 
-All datasets are harmonised to 10 common features. See `data/README.md` for download instructions.
+All datasets are harmonized to 10 common features. See `data/README.md` for download instructions.
 
 ---
 
@@ -121,7 +119,7 @@ All datasets are harmonised to 10 common features. See `data/README.md` for down
 
 ```bash
 # Clone the repository
-git clone https://github.com/rodrigo-tertulino/fedcvr.git
+git clone https://anonymous.4open.science/r/fedcvr-80DB.git
 cd fedcvr
 
 # Create a virtual environment (recommended)
@@ -133,7 +131,7 @@ source .venv/bin/activate        # Linux / macOS
 pip install -r requirements.txt
 ```
 
-> **Note:** Opacus requires PyTorch ≥ 2.0. GPU is optional – all experiments were run on CPU.
+> **Note:** Opacus requires PyTorch ≥ 2.0. GPU is optional; all experiments were run on the CPU.
 
 ---
 
@@ -142,6 +140,8 @@ pip install -r requirements.txt
 ### 1. Download the datasets
 
 Follow the instructions in `data/README.md` and place the five CSV files in the `data/` directory.
+
+The dataset is available in the article.
 
 ### 2. Run Investigation 1 – Strategy comparison
 
@@ -195,21 +195,6 @@ Evaluates four privacy levels (no DP, σ=0.8, σ=1.1, σ=1.5) and saves:
 
 ---
 
-## Citation
-
-If you use this code or the methodology in your work, please cite:
-
-```bibtex
-@article{tertulino2025fedcvr,
-  title   = {Overcoming Clinical Data Heterogeneity: A Secure Federated
-             Framework for Cardiovascular Risk Prediction},
-  author  = {Tertulino, Rodrigo and Almeida, Ricardo and Alencar, La{\'e}rcio},
-  journal = {iSys -- Revista Brasileira de Sistemas de Informa{\c{c}}{\~a}o},
-  year    = {2025}
-}
-```
-
----
 
 ## License
 
