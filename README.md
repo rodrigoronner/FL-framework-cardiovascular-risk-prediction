@@ -202,10 +202,3 @@ This project is released under the **MIT License**. See `LICENSE` for details.
 
 The datasets used in this work are subject to their own respective licenses.
 Please refer to `data/README.md` for the original sources and terms of use.
-
----
-
-## Contact
-
-Rodrigo Tertulino — `rodrigo.tertulino@ifrn.edu.br`
-IFRN – Departamento de Informática, Natal, Brazil
