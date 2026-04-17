@@ -1,39 +1,39 @@
-# FedCVR – Federated Cardiovascular Risk Prediction
+# DP-FedAdam — Interpretable Differentially Private Federated Learning for Cardiovascular Risk Prediction
 
-> **Paper:** *Overcoming Clinical Data Heterogeneity: A Secure Federated Framework for Cardiovascular Risk Prediction*
-> **Journal:** iSys – Revista Brasileira de Sistemas de Informação (Brazilian Journal of Information Systems), 2025
+> **Paper:** *Interpretable Differentially Private Federated Learning for Cardiovascular Risk Prediction: Mechanistic Transparency and Fairness Auditing*
+> **Journal:** Biomedical Signal Processing and Control (BSPC) — Special Issue: Advancing Explainable, Interpretable, and Ethical Artificial Intelligence in Healthcare, Elsevier, 2026 (under review)
 
 ---
 
 ## Overview
 
-FedCVR is a federated learning framework designed for cardiovascular risk prediction across institutionally siloed, heterogeneous clinical datasets. It addresses two key challenges simultaneously:
+DP-FedAdam is a federated learning framework for cardiovascular risk prediction that treats the server-side Adam optimizer and the client-side DP-SGD privacy mechanism as a single, jointly designed noise-filtering system. Unlike conventional DP-FL pipelines that compose these components as independent black boxes, the framework makes their interaction explicit in closed form, establishing three properties demanded by the target clinical setting: interpretability, explainability, and ethical governability.
 
-**Non-IID data heterogeneity** — real hospital datasets differ in feature distributions, class imbalance, and local sample sizes. FedCVR uses a FedProx-style proximal term on each client to penalize excessive drift from the global model.
+**Core theoretical insight.** The server's first-moment accumulator acts as a temporal low-pass filter over the zero-mean Gaussian DP noise injected by DP-SGD. Because the true gradient signal is persistent near a minimum while the noise is zero-mean, momentum accumulates the signal constructively and progressively cancels the noise. The steady-state variance of the momentum vector is bounded by Var(g_noise) · (1 − β₁) / (1 + β₁), which at β₁ = 0.9 yields an effective 19× variance reduction compared with a stateless aggregator. The argument is stated in a single closed-form equation and can be communicated to a clinician or data protection officer in one paragraph, without a surrogate model.
 
-**Privacy preservation** — raw patient gradients can leak sensitive information. FedCVR applies client-side Differential Privacy via Opacus (per-sample gradient clipping + calibrated Gaussian noise) before any update leaves a client.
+**Fairness audit.** A per-client Rényi Differential Privacy (RDP) accountant reports individual privacy expenditure for each participating site. Under the primary configuration (σ = 1.1, C = 1.0, L = 32, E = 5, T = 100), per-client ε ranges from ≈ 4.8 (H1 Framingham, n = 2,967) to ≈ 13.4 (H3 Cleveland, n = 644), a 2.8× spread driven entirely by dataset-size imbalance. Making the spread explicit converts a cryptographically honest but ethically one-sided single-number ε into an auditable fairness table.
 
-**Adaptive aggregation** — rather than plain weighted averaging, the server applies an Adam-style moment estimator to the aggregated pseudo-gradient, accelerating convergence under non-IID conditions.
+**Ethical deployment constraint.** A recall-versus-ε governance curve, grounded in the 2021 ESC and 2019 ACC/AHA cardiovascular prevention guidelines, shows that recall is the clinical metric most sensitive to privacy tightening: across the full privacy range, it falls 23.3 percentage points (78.7% → 55.4%), while accuracy declines only 3.6 points. The curve serves as an explainable governance tool that ethics committees and data protection officers can use to negotiate a clinically safe lower bound on the deployable privacy budget.
 
 ```
-                ┌──────────────────────────────────────────────────┐
-                │                   FL Server                       │
-                │  w_{t+1} = w_t + η · m̂_t / (√v̂_t + ε)         │
-                │  (adaptive moment aggregation)                    │
-                └────────┬──────────────┬──────────────────────────┘
-                         │              │  broadcast w_t
-           ┌─────────────┘              └──────────────┐
-           ▼                                            ▼
-  ┌──────────────────┐                       ┌──────────────────┐
-  │  Client 0        │        · · ·          │  Client 4        │
-  │  Framingham      │                       │  Hungarian       │
-  │                  │                       │                  │
-  │  1. FedProx      │                       │  1. FedProx      │
-  │     local SGD    │                       │     local SGD    │
-  │  2. DP: clip +   │                       │  2. DP: clip +   │
-  │     Gaussian     │                       │     Gaussian     │
-  │     noise        │                       │     noise        │
-  └──────────────────┘                       └──────────────────┘
+                 ┌─────────────────────────────────────────────────────┐
+                 │               Federated Server                       │
+                 │   Adaptive Optimizer  (β₁=0.9, β₂=0.999)           │
+                 │   m_t = β₁·m_{t-1} + (1−β₁)·ḡ_t   ← low-pass     │
+                 │   w_{t+1} = w_t − η · m̂_t / (√v̂_t + τ)           │
+                 │   RDP Accountant  →  per-client ε audit             │
+                 └──────┬────────────┬────────────┬────────────┬───────┘
+                        │  w_t       │            │            │
+           ┌────────────▼──┐   ┌─────▼──────┐   ┌─▼──────────┐   ...
+           │  H1 Framingham│   │  H2 IEEE-  │   │ H3 UCI     │
+           │  4,238 records│   │  CHD 1,190 │   │ Cleveland  │
+           │               │   │            │   │ 920        │
+           │  Local SGD    │   │  Local SGD │   │ Local SGD  │
+           │  DP-SGD       │   │  DP-SGD    │   │ DP-SGD     │
+           │  clip C=1.0   │   │  clip C=1.0│   │ clip C=1.0 │
+           │  + N(0,σ²C²I) │   │  + noise   │   │ + noise    │
+           └───────────────┘   └────────────┘   └────────────┘
+                   ↑ DP-protected pseudo-gradient g̃_k sent to server ↑
 ```
 
 ---
@@ -41,23 +41,25 @@ FedCVR is a federated learning framework designed for cardiovascular risk predic
 ## Repository Structure
 
 ```
-fedcvr/
-├── fedcvr/                   # Core Python package
+FL-framework-cardiovascular-risk-prediction/
+├── FL-framework-cardiovascular-risk-prediction/   # Core Python package
 │   ├── __init__.py
-│   ├── model.py              # 3-layer DNN (logit output)
-│   ├── client.py             # FedCVRClient – FedProx + Opacus DP
-│   ├── strategy.py           # FedCVRStrategy – Adam server aggregation
-│   └── data_utils.py         # Data loading, harmonization, preprocessing
+│   ├── model.py                   # DNN: Input(6)→64→ReLU→32→ReLU→1→Sigmoid
+│   ├── client.py                  # DP-SGD client via Opacus
+│   ├── strategy.py                # DP-FedAdam server (Adam aggregation + RDP)
+│   ├── rdp_accountant.py          # Per-client Rényi-DP accounting
+│   └── data_utils.py              # Harmonization, preprocessing, SMOTE
 │
-├── experiments/              # Reproducible experiment scripts
-│   ├── run_comparison.py     # Investigation 1: FedCVR vs baselines
-│   └── run_dp_sensitivity.py # Investigation 3: DP sensitivity analysis
+├── experiments/
+│   ├── run_benchmark.py           # 6-method comparison, 100 rounds, N=5 seeds
+│   ├── run_dp_sensitivity.py      # Privacy-utility trade-off across σ ∈ {0.8,1.1,1.5}
+│   └── run_longitudinal.py        # 5,000-round convergence study
 │
-├── data/                     # Place dataset CSV files here (see data/README.md)
-│   ├── README.md             # Download instructions for all 5 datasets
-│   └── convert_cleveland.py  # Utility: convert UCI .data → .csv
+├── data/
+│   ├── README.md                  # Download instructions for all 5 datasets
+│   └── convert_cleveland.py       # UCI .data → .csv converter
 │
-├── results/                  # Output directory (auto-created by experiments)
+├── results/                       # Auto-created output directory
 ├── requirements.txt
 └── .gitignore
 ```
@@ -68,50 +70,94 @@ fedcvr/
 
 ### Model Architecture
 
-A three-layer deep neural network (DNN):
+A lightweight deep neural network (DNN) for binary cardiovascular risk classification:
 
 ```
-Input(10) → Linear(16) → ReLU → Linear(8) → ReLU → Linear(1)
+Input(6) → Linear(64) → ReLU → Linear(32) → ReLU → Linear(1) → Sigmoid
 ```
 
-Binary cross-entropy with logits (`BCEWithLogitsLoss`) is used with a class-imbalance correction weight computed per client from local label frequencies.
+The input layer accepts six harmonized clinical features. Training uses the Binary Cross-Entropy (BCE) loss. The local optimizer at each client is vanilla SGD (no client-side momentum, no learning rate schedule), with a fixed learning rate η_c = 0.01 and five local epochs per round. This deliberate choice means that all denoising is attributed to the server, isolating the low-pass filter effect for interpretability.
 
-### Client Update (FedProx + DP)
+### Client Update — DP-SGD
 
-Each client minimizes:
+Each selected client trains locally using DP-SGD enforced by the Opacus library. For every mini-batch B:
 
-```
-L_local(w) = L_CE(w) + (μ/2) · ‖w − w_global‖²
-```
-
-where `μ` is the proximal coefficient (default `0.1`). After computing gradients via SGD (momentum 0.9, lr 0.01, 5 local epochs), Opacus clips per-sample gradients to norm `C = 1.0` and adds calibrated Gaussian noise `N(0, σ²C²I)` before the update is transmitted.
-
-### Server Aggregation (Adaptive Moment Estimation)
-
-The server maintains first- and second-moment vectors and applies bias-corrected Adam-style updates:
+1. **Per-sample gradient clipping** bounds the sensitivity:
 
 ```
-Δ_t  = FedAvg(client_updates) − w_t
-m_t  = β₁·m_{t-1} + (1−β₁)·Δ_t          (β₁ = 0.9)
-v_t  = β₂·v_{t-1} + (1−β₂)·Δ_t²         (β₂ = 0.999)
-m̂_t  = m_t / (1 − β₁ᵗ)
+ḡ_i = g_i / max(1, ‖g_i‖₂ / C)
+```
+
+2. **Gaussian noise injection** enforces (ε, δ)-DP:
+
+```
+g̃_B = Σ_{i∈B} ḡ_i + N(0, σ²C²I)
+```
+
+The resulting pseudo-gradient Δw_k = w − w_k is returned to the server. No client-side momentum is used, ensuring that the server's Adam accumulator is the sole source of noise attenuation.
+
+Default DP parameters: C = 1.0, σ ∈ {0.8, 1.1, 1.5}, L = 32 (batch size).
+
+### Server Aggregation — DP-FedAdam
+
+The server maintains first- and second-moment vectors across rounds and applies bias-corrected Adam-style updates. The critical insight is that m_t functions as a temporal low-pass filter on the zero-mean DP noise:
+
+```
+ḡ_t  = (1/|S_t|) · Σ_{k∈S_t} Δw_k          # aggregate pseudo-gradients
+m_t  = β₁·m_{t-1} + (1−β₁)·ḡ_t             # low-pass filter on DP noise
+v_t  = β₂·v_{t-1} + (1−β₂)·ḡ_t²            # element-wise
+m̂_t  = m_t / (1 − β₁ᵗ)                      # bias correction
 v̂_t  = v_t / (1 − β₂ᵗ)
-w_{t+1} = w_t + η·m̂_t / (√v̂_t + ε)      (η = 0.01, ε = 1e-8)
+w_{t+1} = w_t − η · m̂_t / (√v̂_t + τ)       # adaptive update
+```
+
+Default server parameters: η = 0.1, β₁ = 0.9, β₂ = 0.999, τ = 1e-3.
+
+**Variance reduction bound.** Unrolling the recursion under stationarity gives:
+
+```
+Var(m_t) ≤ Var(g_noise) · (1 − β₁) / (1 + β₁)
+```
+
+At β₁ = 0.9, this is a 19× reduction relative to a stateless aggregator. The bound precedes the measurement and predicts its direction, making the performance advantage mechanistically transparent.
+
+### Privacy Budget Accounting
+
+The framework integrates a per-client RDP accountant. Because each mini-batch subsamples a fraction q = L / n_{train,k} of client k's data, and dataset sizes differ, per-client ε varies under the same nominal (σ, C). The globally reported ε is always the worst-case (maximum) across sites.
+
+```python
+# Example: query per-client privacy expenditure after training
+accountant = RDPAccountant(noise_multiplier=1.1, clip_norm=1.0, batch_size=32)
+per_client_eps = accountant.compute_per_client_epsilon(
+    client_sizes=[2967, 952, 644, 800, 820],
+    epochs=5, rounds=100, delta=1e-5
+)
+# Returns: {'H1': 4.8, 'H2': 11.2, 'H3': 13.4, 'H4': 12.1, 'H5': 11.9}
 ```
 
 ### Datasets
 
-Five publicly available cardiovascular datasets simulate an institutionally siloed, non-IID federation:
+Five publicly available cardiac EHR datasets simulate a genuinely heterogeneous, non-IID federation. No two clients share identical data-generating processes.
 
-| Client | Dataset | Samples | Primary heterogeneity |
-|--------|---------|---------|----------------------|
-| 0 | Framingham Heart Study | ~4,238 | Longitudinal, community |
-| 1 | UCI Cleveland | 303 | Clinical, catheterisation |
-| 2 | FIC Pakistan | ~1,000 | Regional, demographic shift |
-| 3 | Heart Disease Prediction | ~270 | Mixed, imbalanced |
-| 4 | Hungarian | ~294 | European clinical |
+| Client | Dataset | Samples | Features (raw) | Region |
+|--------|---------|---------|----------------|--------|
+| H1 | Framingham Heart Study | 4,238 | 16 | Longitudinal, USA |
+| H2 | IEEE Comprehensive HD | 1,190 | 28 | Aggregated (IEEE Dataport) |
+| H3 | UCI Heart Disease (Cleveland) | 920 | 14 | Multicenter (UCI Archive) |
+| H4 | FIC Pakistan (Faisalabad) | 1,000 | 19 | Clinical, Pakistan |
+| H5 | Kaggle Heart Prediction | 1,025 | 14 | Cleaned clinical |
 
-All datasets are harmonized to 10 common features. See `data/README.md` for download instructions.
+**Total:** 8,373 records. Local dataset sizes span a 4.6-fold range (920–4,238), creating the imbalance that drives the per-client ε spread documented in the fairness audit.
+
+All datasets are harmonized to **six common cardiovascular risk features**: age, systolic blood pressure, diastolic blood pressure, serum cholesterol, fasting blood glucose, and sex. Feature selection was based on cross-dataset availability, regardless of naming convention; no features were synthesized or imputed across sites.
+
+**Preprocessing pipeline (per client, training fold only):**
+1. IQR-based outlier capping (1.5-IQR rule, continuous features)
+2. Standardization to zero mean and unit variance
+3. Median imputation for missing values
+4. SMOTE oversampling within the training fold (class imbalance correction)
+
+**Splits:** 70% train / 10% validation / 20% test, stratified, `random_state=42`.
 
 ---
 
@@ -119,8 +165,9 @@ All datasets are harmonized to 10 common features. See `data/README.md` for down
 
 ```bash
 # Clone the repository
-git clone https://anonymous.4open.science/r/fedcvr-80DB.git
-cd fedcvr
+git clone https://github.com/rodrigoronner/FL-framework-cardiovascular-risk-prediction
+.git
+cd FL-framework-cardiovascular-risk-prediction
 
 # Create a virtual environment (recommended)
 python -m venv .venv
@@ -131,7 +178,7 @@ source .venv/bin/activate        # Linux / macOS
 pip install -r requirements.txt
 ```
 
-> **Note:** Opacus requires PyTorch ≥ 2.0. GPU is optional; all experiments were run on the CPU.
+> **Note:** Opacus requires PyTorch ≥ 2.0. All experiments were run on a CPU (Intel Xeon, 4 vCores, 12–16 GiB RAM). GPU is optional.
 
 ---
 
@@ -141,64 +188,115 @@ pip install -r requirements.txt
 
 Follow the instructions in `data/README.md` and place the five CSV files in the `data/` directory.
 
-The dataset is available in the article.
-
-### 2. Run Investigation 1 – Strategy comparison
+### 2. Run the 6-method benchmark (100 rounds)
 
 ```bash
-python -m experiments.run_comparison \
-    --data_dir data \
-    --rounds   100 \
-    --out_dir  results
+python -m experiments.run_benchmark \
+    --data_dir  data \
+    --rounds    100 \
+    --n_runs    5 \
+    --sigma     1.1 \
+    --out_dir   results
 ```
 
-This runs four scenarios (FedAvg, FedProx, FedCVR, FedCVR+DP) for 100 rounds and saves:
-- `results/comparison_metrics.csv`
-- `results/comparison_plot.png`
+Runs DP-FedAdam, FedAvg, FedProx, FedCluster, FedAdagrad, and FedYogi under identical DP constraints (ε ≈ 13.4, δ = 1e-5). Saves:
+- `results/benchmark_metrics.csv`
+- `results/benchmark_plot.png`
+- `results/per_client_epsilon.csv` — fairness audit table
 
-### 3. Run Investigation 3 – DP sensitivity analysis
+### 3. Run the privacy-utility trade-off analysis
 
 ```bash
 python -m experiments.run_dp_sensitivity \
-    --data_dir data \
-    --rounds   50 \
-    --out_dir  results
+    --data_dir  data \
+    --rounds    100 \
+    --sigma     0.8 1.1 1.5 \
+    --out_dir   results
 ```
 
-Evaluates four privacy levels (no DP, σ=0.8, σ=1.1, σ=1.5) and saves:
+Evaluates three privacy levels plus the no-DP baseline. Saves:
 - `results/dp_sensitivity_metrics.csv`
-- `results/dp_sensitivity_plot.png`
+- `results/privacy_trade_off.png` — the recall-versus-ε governance curve
+
+### 4. Run the longitudinal convergence study (5,000 rounds)
+
+```bash
+python -m experiments.run_longitudinal \
+    --data_dir  data \
+    --rounds    5000 \
+    --sigma     1.1 \
+    --out_dir   results
+```
+
+Saves:
+- `results/longitudinal_loss.png`
+- `results/longitudinal_f1.png`
 
 ---
 
-## Key Results (from the paper)
+## Results
 
-| Strategy | Accuracy | Precision | Recall | F1-Score |
-|----------|----------|-----------|--------|----------|
-| FedAvg (baseline) | — | — | — | — |
-| FedProx | — | — | — | — |
-| **FedCVR (ours)** | — | — | — | — |
-| FedCVR + DP (σ=1.1) | — | — | — | — |
+### Benchmark — All Methods Under DP (ε ≈ 13.4, σ = 1.1, N = 5 runs)
 
-*See Table 1 and Table 2 in the paper for the full numerical results.*
+| Method | Type | Accuracy | Recall | F1 | AUC | p-value vs proposed |
+|--------|------|----------|--------|----|-----|---------------------|
+| FedAvg | Stateless | 0.85 ± 0.02 | 0.65 ± 0.04 | 0.67 ± 0.04 | 0.88 ± 0.02 | < 0.001 |
+| FedProx | Regularisation | 0.87 ± 0.01 | 0.68 ± 0.02 | 0.70 ± 0.03 | 0.90 ± 0.01 | < 0.001 |
+| FedCluster | Clustering | 0.88 ± 0.02 | 0.70 ± 0.03 | 0.71 ± 0.03 | 0.91 ± 0.02 | < 0.001 |
+| FedAdagrad | Adaptive | 0.89 ± 0.02 | 0.72 ± 0.03 | 0.73 ± 0.03 | 0.92 ± 0.01 | < 0.001 |
+| FedYogi | Adaptive | 0.91 ± 0.01 | 0.76 ± 0.02 | 0.75 ± 0.02 | 0.94 ± 0.01 | 0.014 |
+| **DP-FedAdam (ours)** | **Adaptive** | **0.92 ± 0.01** | **0.68 ± 0.02** | **0.77 ± 0.02** | **0.96 ± 0.01** | — |
 
-### Privacy-Utility Trade-off (Investigation 3)
+Statistical comparisons use Welch's two-tailed t-test across N = 5 independent runs. With N = 5 the statistical power is limited; results should be interpreted as indicative trends.
 
-| Scenario | Noise (σ) | Approx. ε | Accuracy | Recall |
-|----------|-----------|-----------|----------|--------|
-| No DP | — | ∞ | — | — |
-| Low Privacy | 0.8 | high | — | — |
-| Medium Privacy | 1.1 | medium | — | — |
-| High Privacy | 1.5 | low | — | — |
+### Privacy-Utility Trade-off
 
-*See Table 3 in the paper.*
+| Scenario | σ | ε (approx.) | Accuracy (%) | Precision (%) | Recall (%) | F1 (%) |
+|----------|---|-------------|-------------|---------------|-----------|--------|
+| No DP (Baseline) | — | ∞ | 94.6 | 89.3 | 78.7 | 83.3 |
+| Low privacy | 0.8 | 80.5 | 93.5 | 88.1 | 75.1 | 81.0 |
+| Moderate privacy | 1.1 | 13.4 | 92.8 | 87.5 | 68.3 | 76.6 |
+| High privacy | 1.5 | 6.6 | 91.0 | 86.2 | 55.4 | 67.5 |
+
+**Key finding:** Across the full privacy range, recall declines 23.3 percentage points (78.7% → 55.4%) while accuracy falls only 3.6 points (94.6% → 91.0%). The steep recall drop below ε ≈ 13.4 defines the practical ethical deployment boundary for this application, as grounded in the 2021 ESC and 2019 ACC/AHA cardiovascular prevention guidelines.
+
+### Per-Client Fairness Audit (σ = 1.1, δ = 1e-5)
+
+| Client | Dataset | n_train | q (sampling rate) | ε |
+|--------|---------|---------|-------------------|---|
+| H1 | Framingham | 2,967 | 0.011 | ≈ 4.8 |
+| H2 | IEEE-CHD | 952 | 0.034 | ≈ 11.2 |
+| H3 | UCI Cleveland | 644 | 0.050 | ≈ 13.4 |
+| H4 | FIC Pakistan | 800 | 0.040 | ≈ 12.1 |
+| H5 | Kaggle HD | 820 | 0.039 | ≈ 11.9 |
+
+The 2.8× spread between H1 and H3 is driven entirely by dataset-size imbalance. Smaller sites pay a disproportionately higher privacy cost under the same nominal (σ, C). The globally reported ε is always the worst-case (H3 = 13.4).
 
 ---
 
+## Hyperparameter Reference
+
+| Parameter | Description | Value |
+|-----------|-------------|-------|
+| `num_clients` | Participating hospitals | 5 |
+| `communication_rounds` | Benchmark / longitudinal | 100 / 5,000 |
+| `random_state` | Reproducibility seed | 42 |
+| `local_epochs` | Local epochs per round | 5 |
+| `local_optimizer` | Client-side optimizer | SGD (no momentum) |
+| `client_lr` | Client learning rate η_c | 0.01 |
+| `batch_size` | Mini-batch size L (Opacus) | 32 |
+| `clip_norm` C | Per-sample gradient clip norm | 1.0 |
+| `sigma` σ | DP noise multiplier (levels tested) | {0.8, 1.1, 1.5} |
+| `server_lr` η | Server-side learning rate | 0.1 |
+| `beta1` β₁ | First moment decay | 0.9 |
+| `beta2` β₂ | Second moment decay | 0.999 |
+| `tau` τ | Numerical stability constant | 1e-3 |
+| `delta` δ | DP delta | 1e-5 |
+
+---
 
 ## License
 
 This project is released under the **MIT License**. See `LICENSE` for details.
 
-The datasets used in this work are subject to their own respective licenses.
-Please refer to `data/README.md` for the original sources and terms of use.
+The datasets used in this work are subject to their own respective licenses. Please refer to `data/README.md` for original sources and terms of use.
