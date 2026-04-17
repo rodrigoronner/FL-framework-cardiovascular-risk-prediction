@@ -42,7 +42,7 @@ DP-FedAdam is a federated learning framework for cardiovascular risk prediction 
 
 ```
 FL-framework-cardiovascular-risk-prediction/
-├── FL-framework-cardiovascular-risk-prediction/   # Core Python package
+├── FedCVR/   # Core Python package
 │   ├── __init__.py
 │   ├── model.py                   # DNN: Input(6)→64→ReLU→32→ReLU→1→Sigmoid
 │   ├── client.py                  # DP-SGD client via Opacus
