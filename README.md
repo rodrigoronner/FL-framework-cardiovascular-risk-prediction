@@ -1,7 +1,7 @@
 # FedCVR – Federated Cardiovascular Risk Prediction
 
-%> **Paper:** *Overcoming Clinical Data Heterogeneity: A Secure Federated Framework for Cardiovascular Risk Prediction*
-%> **Journal:** iSys – Revista Brasileira de Sistemas de Informação (Brazilian Journal of Information Systems), 2025
+> **Paper:** *Overcoming Clinical Data Heterogeneity: A Secure Federated Framework for Cardiovascular Risk Prediction*
+> **Journal:** iSys – Revista Brasileira de Sistemas de Informação (Brazilian Journal of Information Systems), 2025
 
 ---
 
