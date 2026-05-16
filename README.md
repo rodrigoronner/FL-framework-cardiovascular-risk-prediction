@@ -1,7 +1,9 @@
 # DP-FedAdam — Interpretable Differentially Private Federated Learning for Cardiovascular Risk Prediction
 
 > **Paper:** *Interpretable Differentially Private Federated Learning for Cardiovascular Risk Prediction: Mechanistic Transparency and Fairness Auditing*
-> **Journal:** Computer Methods and Programs in Biomedicine Update, Elsevier, 2026 (under review)
+> **Journal:** Computer Methods and Programs in Biomedicine Update, Elsevier (under review)
+
+> **Note on anonymization:** This repository has been anonymized for double-blind peer review. Author names, institutional affiliations, and any other identifying details have been removed. The repository will be made fully public, with authorship attribution, upon acceptance of the manuscript.
 
 ---
 
@@ -165,8 +167,8 @@ All datasets are harmonized to **six common cardiovascular risk features**: age,
 
 ```bash
 # Clone the repository
-git clone https://github.com/rodrigoronner/FL-framework-cardiovascular-risk-prediction
-.git
+# (Full URL provided in the manuscript after acceptance; anonymized for peer review)
+git clone <repository-url>
 cd FL-framework-cardiovascular-risk-prediction
 
 # Create a virtual environment (recommended)
@@ -245,7 +247,7 @@ Saves:
 | FedCluster | Clustering | 0.88 ± 0.02 | 0.70 ± 0.03 | 0.71 ± 0.03 | 0.91 ± 0.02 | < 0.001 |
 | FedAdagrad | Adaptive | 0.89 ± 0.02 | 0.72 ± 0.03 | 0.73 ± 0.03 | 0.92 ± 0.01 | < 0.001 |
 | FedYogi | Adaptive | 0.91 ± 0.01 | 0.76 ± 0.02 | 0.75 ± 0.02 | 0.94 ± 0.01 | 0.014 |
-| **DP-FedAdam (ours)** | **Adaptive** | **0.92 ± 0.01** | **0.68 ± 0.02** | **0.77 ± 0.02** | **0.96 ± 0.01** | — |
+| **DP-FedAdam (proposed)** | **Adaptive** | **0.92 ± 0.01** | **0.78 ± 0.02** | **0.77 ± 0.02** | **0.96 ± 0.01** | — |
 
 Statistical comparisons use Welch's two-tailed t-test across N = 5 independent runs. With N = 5 the statistical power is limited; results should be interpreted as indicative trends.
 
