@@ -1,7 +1,7 @@
 # DP-FedAdam — Interpretable Differentially Private Federated Learning for Cardiovascular Risk Prediction
 
 > **Paper:** *Interpretable Differentially Private Federated Learning for Cardiovascular Risk Prediction: Mechanistic Transparency and Fairness Auditing*
-> **Journal:** Biomedical Signal Processing and Control (BSPC) — Special Issue: Advancing Explainable, Interpretable, and Ethical Artificial Intelligence in Healthcare, Elsevier, 2026 (under review)
+> **Journal:** Computer Methods and Programs in Biomedicine Update, Elsevier, 2026 (under review)
 
 ---
 
