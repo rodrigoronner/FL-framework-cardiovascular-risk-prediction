@@ -1,7 +1,6 @@
 # DP-FedAdam — Interpretable Differentially Private Federated Learning for Cardiovascular Risk Prediction
 
 > **Paper:** *Interpretable Differentially Private Federated Learning for Cardiovascular Risk Prediction: Mechanistic Transparency and Fairness Auditing*
-> **Journal:** Computer Methods and Programs in Biomedicine Update, Elsevier (under review)
 
 > **Note on anonymization:** This repository has been anonymized for double-blind peer review. Author names, institutional affiliations, and any other identifying details have been removed. The repository will be made fully public, with authorship attribution, upon acceptance of the manuscript.
 
