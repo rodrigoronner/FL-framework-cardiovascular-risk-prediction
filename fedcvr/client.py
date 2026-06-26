@@ -29,7 +29,6 @@ The loss function is Binary Cross-Entropy (BCELoss). The model's forward
 pass applies a sigmoid activation so outputs are calibrated probabilities
 in [0, 1], and BCELoss operates directly on those probabilities.
 
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
 The client extends ``fl.client.NumPyClient`` for seamless Flower integration.
 """
 
@@ -65,7 +64,7 @@ class FedCVRClient(NumPyClient):
 <<<<<<< HEAD
     pos_weight  : Class-imbalance correction weight for BCEWithLogitsLoss.
 =======
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+
     local_epochs: Number of local SGD epochs per communication round.
     use_dp      : Whether to activate Opacus Differential Privacy.
     dp_config   : Dict with keys ``noise_multiplier`` and ``max_grad_norm``.
@@ -80,7 +79,7 @@ class FedCVRClient(NumPyClient):
 <<<<<<< HEAD
         pos_weight: torch.Tensor,
 =======
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+
         local_epochs: int = 5,
         use_dp: bool = False,
         dp_config: Optional[Dict] = None,
@@ -107,7 +106,7 @@ class FedCVRClient(NumPyClient):
         # Binary Cross-Entropy loss. The model already applies sigmoid, so
         # outputs are probabilities in [0, 1].
         self.criterion = nn.BCELoss()
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+
 
         if self.use_dp:
             if dp_config is None:
@@ -160,7 +159,7 @@ class FedCVRClient(NumPyClient):
                 loss = self.criterion(outputs, labels)
 
                 # FedProx proximal term: (mu/2) ||w - w_global||^2
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+
                 if mu > 0.0:
                     prox_loss = sum(
                         (local - global_).pow(2).sum()
@@ -196,7 +195,7 @@ class FedCVRClient(NumPyClient):
                 total_loss += self.criterion(outputs, labels).item() * len(labels)
                 all_labels.extend(labels.numpy().flatten().tolist())
                 all_preds.extend((outputs >= 0.5).int().numpy().flatten().tolist())
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+
 
         n = len(all_labels)
         if n == 0:
@@ -253,7 +252,7 @@ def build_client(
     def _to_loader(X, y, shuffle=False):
 =======
     def _to_loader(X: np.ndarray, y: np.ndarray, shuffle: bool = False) -> DataLoader:
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+
         return DataLoader(
             TensorDataset(
                 torch.tensor(X, dtype=torch.float32),
@@ -270,7 +269,7 @@ def build_client(
     # Rebuild with effective batch size when DP is on
 =======
 
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+
     if use_dp:
         train_loader = DataLoader(
             TensorDataset(
@@ -291,7 +290,7 @@ def build_client(
         train_loader = _to_loader(X_train, y_train, shuffle=True)
 
     test_loader = _to_loader(X_test, y_test)
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+
 
     return FedCVRClient(
         model=model,
@@ -300,7 +299,7 @@ def build_client(
 <<<<<<< HEAD
         pos_weight=pos_weight,
 =======
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+
         local_epochs=local_epochs,
         use_dp=use_dp,
         dp_config=dp_config,
