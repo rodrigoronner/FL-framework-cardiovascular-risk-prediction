@@ -15,7 +15,7 @@ exact filename shown.
 ---
 
 ## Dataset H1 – Framingham Heart Study
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+
 **File expected:** `framingham.csv`
 
 | Field | Details |
@@ -56,7 +56,7 @@ Download and save as `data/ieee_chd.csv`.
 ---
 
 ## Dataset H3 – UCI Cleveland Heart Disease
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+
 **File expected:** `cleveland.csv`
 
 | Field | Details |
@@ -71,7 +71,7 @@ Download and save as `data/ieee_chd.csv`.
 | Samples | 920 (after preprocessing) |
 | Key target column | `num` (0 = no disease, 1–4 = disease, binarised to 0/1) |
 | Key columns used | `age`, `sex`, `trestbps` (systolic BP), `chol` (cholesterol), `fbs` (fasting blood glucose) |
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+
 
 The raw file uses `.data` format with `?` for missing values. Convert it with:
 
@@ -89,7 +89,7 @@ Note: diastolic BP (`diaBP`) is not present in the Cleveland dataset and will be
 ---
 
 ## Dataset H4 – FIC Pakistan (Faisalabad)
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+
 **File expected:** `fic_pakistan.csv`
 
 | Field | Details |
@@ -103,7 +103,7 @@ Note: diastolic BP (`diaBP`) is not present in the Cleveland dataset and will be
 | Samples | 1,000 |
 | Key target column | `Mortality` |
 | Key columns used | `Age`, `Gender` (sex), `Systolic BP`, `Diastolic BP`, `Cholestrol`, `FBS` |
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+
 
 Download and save as `data/fic_pakistan.csv`.
 
