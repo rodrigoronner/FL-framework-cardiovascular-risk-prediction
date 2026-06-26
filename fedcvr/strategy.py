@@ -15,7 +15,11 @@ Server update rule (per round t)
     w_{t+1} = w_t + η · m̂_t / (√v̂_t + ε)        # parameter update
 
 Default hyper-parameters match those used in the paper experiments:
+<<<<<<< HEAD
     η = 0.01,  β₁ = 0.9,  β₂ = 0.999,  ε = 1e-8
+=======
+    η = 0.1,  β₁ = 0.9,  β₂ = 0.999,  τ = 1e-3
+>>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
 
 The class also stores per-round per-client evaluation metrics so that
 results can be inspected or exported after the simulation.
@@ -53,10 +57,17 @@ class FedCVRStrategy(FedAvg):
     def __init__(
         self,
         *,
+<<<<<<< HEAD
         eta: float = 0.01,
         beta_1: float = 0.9,
         beta_2: float = 0.999,
         tau: float = 1e-8,
+=======
+        eta: float = 0.1,
+        beta_1: float = 0.9,
+        beta_2: float = 0.999,
+        tau: float = 1e-3,
+>>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)

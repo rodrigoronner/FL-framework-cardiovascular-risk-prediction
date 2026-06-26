@@ -70,14 +70,22 @@ SCENARIOS: Dict[str, Dict] = {
     "FedCVR (ours)": {
         "mu": 0.1,
         "dp": None,
+<<<<<<< HEAD
         "strategy_kwargs": {"eta": 0.01},  # full: proximal client + Adam server
+=======
+        "strategy_kwargs": {"eta": 0.1},   # full: proximal client + Adam server (eta=0.1)
+>>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
         "linestyle": "-",
         "color": "tab:green",
     },
     "FedCVR+DP (σ=1.1)": {
         "mu": 0.1,
         "dp": {"noise_multiplier": 1.1, "max_grad_norm": 1.0},
+<<<<<<< HEAD
         "strategy_kwargs": {"eta": 0.01},
+=======
+        "strategy_kwargs": {"eta": 0.1},   # eta=0.1 as reported in the paper
+>>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
         "linestyle": ":",
         "color": "tab:red",
     },

@@ -46,7 +46,11 @@ from fedcvr.strategy import FedCVRStrategy
 # ---------------------------------------------------------------------------
 
 MU = 0.1         # proximal term (fixed for all DP scenarios)
+<<<<<<< HEAD
 SERVER_ETA = 0.01
+=======
+SERVER_ETA = 0.1  # server Adam learning rate as reported in the paper (eta_s = 0.1)
+>>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
 
 DP_SCENARIOS: Dict[str, Optional[Dict]] = {
     "No DP (Baseline)": None,
