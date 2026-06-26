@@ -38,7 +38,7 @@ Client H2  -  IEEE Comprehensive Heart Disease  (ieee_chd.csv)
 Client H3  -  UCI Cleveland Heart Disease       (cleveland.csv)
 Client H4  -  FIC Pakistan                      (fic_pakistan.csv)
 Client H5  -  Kaggle Heart Prediction           (kaggle_heart.csv)
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+>>>>>>> 3d539aa >>>>>>>
 
 Download instructions: see data/README.md
 """
@@ -85,7 +85,7 @@ COLUMN_MAPPINGS: List[Dict[str, str]] = [
 #                      chol (cholesterol), fbs (fasting blood glucose)
 COLUMN_MAPPINGS: List[Dict[str, str]] = [
     # H1 - Framingham
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+>>>>>>> 3d539aa >>>>>>>
     {
         "male": "sex",
         "age": "age",
@@ -144,7 +144,7 @@ COLUMN_MAPPINGS: List[Dict[str, str]] = [
         "Gender": "sex",
         "Systolic BP": "trestbps",
         "Diastolic BP": "diaBP",
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+>>>>>>> 3d539aa >>>>>>>
         "Cholestrol": "chol",
         "FBS": "fbs",
         "Mortality": "target",
@@ -197,7 +197,7 @@ FINAL_FEATURES = [
 
 # Harmonised 6-feature set (same order for every client)
 FINAL_FEATURES = ["age", "sex", "trestbps", "diaBP", "chol", "fbs"]
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+>>>>>>> 3d539aa >>>>>>>
 TARGET_COLUMN = "target"
 
 
@@ -254,7 +254,7 @@ def _apply_smote(
 
 
 # ---------------------------------------------------------------------------
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+>>>>>>> 3d539aa >>>>>>>
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -265,7 +265,7 @@ def load_and_preprocess_data(
 =======
     val_size: float = 0.10,
     test_size: float = 0.20,
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+>>>>>>> 3d539aa >>>>>>>
     random_state: int = 42,
 ) -> Tuple[
     Optional[List[Tuple[np.ndarray, np.ndarray]]],
@@ -288,7 +288,7 @@ def load_and_preprocess_data(
     validation fold is stored in the returned ``client_val_datasets`` list
     and can be used for hyper-parameter tuning outside the FL loop.
 
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+>>>>>>> 3d539aa >>>>>>>
     Parameters
     ----------
     data_dir:
@@ -301,7 +301,7 @@ def load_and_preprocess_data(
         Fraction of each client's data reserved for validation (default 0.10).
     test_size:
         Fraction of each client's data reserved for testing (default 0.20).
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+>>>>>>> 3d539aa >>>>>>>
     random_state:
         Random seed for reproducibility.
 
@@ -315,7 +315,7 @@ def load_and_preprocess_data(
     client_train_datasets : list of (X_train, y_train) arrays (post-SMOTE).
     client_test_datasets  : list of (X_test,  y_test)  arrays.
     filenames             : list of dataset file names (same order).
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+>>>>>>> 3d539aa >>>>>>>
 
     All three return values are ``None`` if loading fails for any dataset.
     """
@@ -326,7 +326,7 @@ def load_and_preprocess_data(
 =======
     print(f"    Features: {FINAL_FEATURES}")
     print(f"    Split: 70% train / {int(val_size*100)}% val / {int(test_size*100)}% test")
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+>>>>>>> 3d539aa >>>>>>>
 
     client_train_datasets: List[Tuple[np.ndarray, np.ndarray]] = []
     client_test_datasets: List[Tuple[np.ndarray, np.ndarray]] = []
@@ -348,7 +348,7 @@ def load_and_preprocess_data(
             # Ensure every feature exists (fill missing ones with NaN for imputation)
 =======
             # Ensure every feature column exists (fill missing with NaN for imputation)
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+>>>>>>> 3d539aa >>>>>>>
             for col in FINAL_FEATURES:
                 if col not in df.columns:
                     df[col] = np.nan
@@ -455,7 +455,7 @@ def load_and_preprocess_data(
                 f"train={len(y_train_res)} (post-SMOTE, raw={len(y_train)}), "
                 f"val={len(y_val)}, test={len(y_test)}, "
                 f"pos_rate_raw={y.mean():.1%}"
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+>>>>>>> 3d539aa >>>>>>>
             )
 
         except FileNotFoundError:
