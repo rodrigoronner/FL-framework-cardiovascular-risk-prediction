@@ -26,7 +26,7 @@ Paired with ``torch.nn.BCELoss`` during training.
 The six harmonised input features are:
     age, sex, systolic BP (trestbps), diastolic BP (diaBP),
     cholesterol (chol), fasting blood glucose (fbs).
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+
 """
 
 import torch
@@ -38,7 +38,7 @@ class Net(nn.Module):
     """Three-layer DNN that returns raw logits.
 =======
     """Three-layer DNN for cardiovascular risk binary classification.
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+
 
     Parameters
     ----------
