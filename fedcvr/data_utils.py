@@ -175,7 +175,7 @@ def load_and_preprocess_data(
     Optional[List[Tuple[np.ndarray, np.ndarray]]],
     Optional[List[str]],
 ]:
-    "Load and harmonize all five cardiovascular datasets.
+    """Load and harmonize all five cardiovascular datasets.
 
     The preprocessing pipeline for each client is:
         1. IQR-based outlier capping on numeric features.
