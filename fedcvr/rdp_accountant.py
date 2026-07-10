@@ -15,7 +15,7 @@ audit described in Section 4.4 of the paper.
 The effective epsilon per client depends on:
   - noise_multiplier (sigma): higher sigma -> lower epsilon (stronger privacy)
   - n_train: number of training samples per client; smaller datasets require
-    more passes over the data per epoch, which amplifies privacy cost
+    more passes over the data per epoch, which amplifies the privacy cost
   - batch_size: affects the sampling rate q = batch_size / n_train
   - n_rounds * local_epochs: total number of gradient steps
   - delta: target failure probability (set to 1e-5 in the paper)
