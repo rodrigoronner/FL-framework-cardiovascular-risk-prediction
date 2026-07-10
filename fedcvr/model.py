@@ -10,7 +10,7 @@ Input(6)  ->  Linear(6, 64)  ->  ReLU
 The model returns calibrated probabilities P(Y=1|x) in [0, 1].
 Paired with ``torch.nn.BCELoss`` during training.
 
-The six harmonised input features are:
+The six harmonized input features are:
     age, sex, systolic BP (trestbps), diastolic BP (diaBP),
     cholesterol (chol), fasting blood glucose (fbs).
 
@@ -28,8 +28,8 @@ class Net(nn.Module):
     ----------
     input_features : int
         Number of input features. Defaults to 6, corresponding to the
-        harmonised cardiovascular feature set used in this project:
-        age, sex, systolic BP, diastolic BP, cholesterol, fasting blood glucose.
+        Harmonized cardiovascular feature set used in this project:
+        age, sex, systolic BP, diastolic BP, cholesterol, and fasting blood glucose.
     """
 
     def __init__(self, input_features: int = 6) -> None:
