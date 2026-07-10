@@ -1,7 +1,7 @@
 """
-data_utils.py - Data loading, harmonisation, and preprocessing.
+data_utils.py - Data loading, harmonization, and preprocessing.
 
-Five publicly available cardiovascular datasets are harmonised to a common
+Five publicly available cardiovascular datasets are harmonized to a common
 6-feature schema and split into per-client training/validation/test partitions
 (70/10/20) that simulate the non-IID, institutionally siloed nature of real
 healthcare data.
@@ -14,7 +14,7 @@ Preprocessing pipeline (applied per client, in order)
 3. Binarisation of the target column (any positive class -> 1).
 4. SMOTE oversampling applied to the training fold only to address
    class imbalance.
-5. StandardScaler normalisation (fit on training fold, applied to all folds).
+5. StandardScaler normalization (fit on training fold, applied to all folds).
 
 Datasets
 --------
@@ -53,7 +53,7 @@ FILENAMES = [
 ]
 
 # Column rename maps per dataset -> common 6-feature schema
-# Harmonised features: age, sex, trestbps (systolic BP), diaBP (diastolic BP),
+# Harmonized features: age, sex, trestbps (systolic BP), diaBP (diastolic BP),
 #                      chol (cholesterol), fbs (fasting blood glucose)
 COLUMN_MAPPINGS: List[Dict[str, str]] = [
     # H1 - Framingham
@@ -106,7 +106,7 @@ COLUMN_MAPPINGS: List[Dict[str, str]] = [
     },
 ]
 
-# Harmonised 6-feature set (same order for every client)
+# Harmonized 6-feature set (same order for every client)
 FINAL_FEATURES = ["age", "sex", "trestbps", "diaBP", "chol", "fbs"]
 TARGET_COLUMN = "target"
 
@@ -175,7 +175,7 @@ def load_and_preprocess_data(
     Optional[List[Tuple[np.ndarray, np.ndarray]]],
     Optional[List[str]],
 ]:
-    """Load and harmonise all five cardiovascular datasets.
+    "Load and harmonize all five cardiovascular datasets.
 
     The preprocessing pipeline for each client is:
         1. IQR-based outlier capping on numeric features.
@@ -183,7 +183,7 @@ def load_and_preprocess_data(
         3. Binarisation of the target column.
         4. Stratified 70/10/20 train/validation/test split.
         5. SMOTE oversampling on the training fold only.
-        6. StandardScaler normalisation (fit on train, applied to val and test).
+        6. StandardScaler normalization (fit on train, applied to val and test).
 
     Note: the Flower simulation uses only training and test folds. The
     validation fold is stored in the returned ``client_val_datasets`` list
