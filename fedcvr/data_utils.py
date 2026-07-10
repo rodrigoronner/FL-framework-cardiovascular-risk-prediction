@@ -1,19 +1,4 @@
 """
-<<<<<<< HEAD
-data_utils.py – Data loading, harmonisation, and preprocessing.
-
-Five publicly available cardiovascular datasets are harmonised to a common
-10-feature schema and split into per-client training/test pairs that simulate
-the non-IID, institutionally siloed nature of real healthcare data.
-
-Datasets
---------
-Client 0  –  Framingham Heart Study     (framingham.csv)
-Client 1  –  UCI Cleveland Heart Disease (cleveland.csv)
-Client 2  –  FIC Pakistan               (fic_pakistan.csv)
-Client 3  –  Heart Disease Prediction   (heart_disease_prediction.csv)
-Client 4  –  Hungarian                  (Hungarian-98-10.csv)
-=======
 data_utils.py - Data loading, harmonisation, and preprocessing.
 
 Five publicly available cardiovascular datasets are harmonised to a common
@@ -38,7 +23,6 @@ Client H2  -  IEEE Comprehensive Heart Disease  (ieee_chd.csv)
 Client H3  -  UCI Cleveland Heart Disease       (cleveland.csv)
 Client H4  -  FIC Pakistan                      (fic_pakistan.csv)
 Client H5  -  Kaggle Heart Prediction           (kaggle_heart.csv)
->>>>>>> 3d539aa >>>>>>>
 
 Download instructions: see data/README.md
 """
@@ -61,18 +45,6 @@ warnings.filterwarnings("ignore", category=UserWarning)
 # ---------------------------------------------------------------------------
 
 FILENAMES = [
-<<<<<<< HEAD
-    "framingham.csv",
-    "cleveland.csv",
-    "fic_pakistan.csv",
-    "heart_disease_prediction.csv",
-    "Hungarian-98-10.csv",
-]
-
-# Column rename maps per dataset → common schema
-COLUMN_MAPPINGS: List[Dict[str, str]] = [
-    # Framingham
-=======
     "framingham.csv",       # H1 - Framingham Heart Study
     "ieee_chd.csv",         # H2 - IEEE Comprehensive Heart Disease
     "cleveland.csv",        # H3 - UCI Cleveland Heart Disease
@@ -85,36 +57,11 @@ COLUMN_MAPPINGS: List[Dict[str, str]] = [
 #                      chol (cholesterol), fbs (fasting blood glucose)
 COLUMN_MAPPINGS: List[Dict[str, str]] = [
     # H1 - Framingham
->>>>>>> 3d539aa >>>>>>>
     {
         "male": "sex",
         "age": "age",
         "totChol": "chol",
         "sysBP": "trestbps",
-<<<<<<< HEAD
-        "diabetes": "fbs",
-        "TenYearCHD": "target",
-    },
-    # Cleveland
-    {
-        "num": "target",
-        "trestbps": "trestbps",
-        "chol": "chol",
-        "fbs": "fbs",
-        "restecg": "restecg",
-        "thalach": "thalach",
-        "exang": "exang",
-        "oldpeak": "oldpeak",
-        "cp": "cp",
-        "sex": "sex",
-        "age": "age",
-    },
-    # FIC Pakistan
-    {
-        "Age": "age",
-        "Gender": "sex",
-        "Chest pain": "cp",
-=======
         "diaBP": "diaBP",
         "glucose": "fbs",
         "TenYearCHD": "target",
@@ -144,46 +91,10 @@ COLUMN_MAPPINGS: List[Dict[str, str]] = [
         "Gender": "sex",
         "Systolic BP": "trestbps",
         "Diastolic BP": "diaBP",
->>>>>>> 3d539aa >>>>>>>
         "Cholestrol": "chol",
         "FBS": "fbs",
-        "Mortality": "target",
+        "DEATH_EVENT": "target",
     },
-<<<<<<< HEAD
-    # Heart Disease Prediction (Kaggle)
-    {
-        "Age": "age",
-        "Gender": "sex",
-        "Chest Pain Type": "cp",
-        "Blood Pressure": "trestbps",
-        "Cholesterol": "chol",
-        "Blood Sugar": "fbs",
-        "Heart Rate": "thalach",
-        "Exercise Induced Angina": "exang",
-        "Heart Disease": "target",
-    },
-    # Hungarian
-    {
-        "num": "target",
-        "trestbps": "trestbps",
-        "chol": "chol",
-        "fbs": "fbs",
-        "restecg": "restecg",
-        "thalach": "thalach",
-        "exang": "exang",
-        "oldpeak": "oldpeak",
-        "cp": "cp",
-        "sex": "sex",
-        "age": "age",
-    },
-]
-
-# Harmonised feature set (same order for every client)
-FINAL_FEATURES = [
-    "age", "sex", "cp", "trestbps", "chol",
-    "fbs", "restecg", "thalach", "exang", "oldpeak",
-]
-=======
     # H5 - Kaggle Heart Prediction
     {
         "Age": "age",
@@ -197,13 +108,10 @@ FINAL_FEATURES = [
 
 # Harmonised 6-feature set (same order for every client)
 FINAL_FEATURES = ["age", "sex", "trestbps", "diaBP", "chol", "fbs"]
->>>>>>> 3d539aa >>>>>>>
 TARGET_COLUMN = "target"
 
 
 # ---------------------------------------------------------------------------
-<<<<<<< HEAD
-=======
 # Helper: IQR-based outlier capping
 # ---------------------------------------------------------------------------
 
@@ -254,18 +162,13 @@ def _apply_smote(
 
 
 # ---------------------------------------------------------------------------
->>>>>>> 3d539aa >>>>>>>
 # Public API
 # ---------------------------------------------------------------------------
 
 def load_and_preprocess_data(
     data_dir: str = ".",
-<<<<<<< HEAD
-    test_size: float = 0.2,
-=======
     val_size: float = 0.10,
     test_size: float = 0.20,
->>>>>>> 3d539aa >>>>>>>
     random_state: int = 42,
 ) -> Tuple[
     Optional[List[Tuple[np.ndarray, np.ndarray]]],
@@ -274,8 +177,6 @@ def load_and_preprocess_data(
 ]:
     """Load and harmonise all five cardiovascular datasets.
 
-<<<<<<< HEAD
-=======
     The preprocessing pipeline for each client is:
         1. IQR-based outlier capping on numeric features.
         2. Median imputation for remaining missing values.
@@ -288,45 +189,30 @@ def load_and_preprocess_data(
     validation fold is stored in the returned ``client_val_datasets`` list
     and can be used for hyper-parameter tuning outside the FL loop.
 
->>>>>>> 3d539aa >>>>>>>
     Parameters
     ----------
     data_dir:
         Directory that contains the five CSV files.
-<<<<<<< HEAD
-    test_size:
-        Fraction of each client's data to use as a local test set.
-=======
     val_size:
         Fraction of each client's data reserved for validation (default 0.10).
     test_size:
         Fraction of each client's data reserved for testing (default 0.20).
->>>>>>> 3d539aa >>>>>>>
     random_state:
         Random seed for reproducibility.
 
     Returns
     -------
-<<<<<<< HEAD
-    client_train_datasets : list of (X_train, y_train) arrays, one per client.
-    client_test_datasets  : list of (X_test,  y_test)  arrays, one per client.
-    filenames             : list of dataset file names (same order as above).
-=======
     client_train_datasets : list of (X_train, y_train) arrays (post-SMOTE).
     client_test_datasets  : list of (X_test,  y_test)  arrays.
     filenames             : list of dataset file names (same order).
->>>>>>> 3d539aa >>>>>>>
 
     All three return values are ``None`` if loading fails for any dataset.
     """
     import os
 
     print("--- Loading and Preprocessing Datasets for 5 Clients ---")
-<<<<<<< HEAD
-=======
     print(f"    Features: {FINAL_FEATURES}")
     print(f"    Split: 70% train / {int(val_size*100)}% val / {int(test_size*100)}% test")
->>>>>>> 3d539aa >>>>>>>
 
     client_train_datasets: List[Tuple[np.ndarray, np.ndarray]] = []
     client_test_datasets: List[Tuple[np.ndarray, np.ndarray]] = []
@@ -344,53 +230,11 @@ def load_and_preprocess_data(
                     f"after mapping. Found columns: {list(df.columns)}"
                 )
 
-<<<<<<< HEAD
-            # Ensure every feature exists (fill missing ones with NaN for imputation)
-=======
             # Ensure every feature column exists (fill missing with NaN for imputation)
->>>>>>> 3d539aa >>>>>>>
             for col in FINAL_FEATURES:
                 if col not in df.columns:
                     df[col] = np.nan
 
-<<<<<<< HEAD
-            df = df[FINAL_FEATURES + [TARGET_COLUMN]]
-
-            # Harmonise 'sex' string labels → binary
-            if df["sex"].dtype == object:
-                sex_map = {"Male": 1, "Female": 0, "male": 1, "female": 0}
-                df["sex"] = (
-                    df["sex"].str.strip().str.capitalize().map(sex_map).fillna(df["sex"])
-                )
-
-            # Coerce all columns to numeric; impute with median
-            for col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors="coerce")
-            df.fillna(df.median(numeric_only=True), inplace=True)
-            df.fillna(0, inplace=True)
-
-            # Binarise target (any positive class → 1)
-            df[TARGET_COLUMN] = (df[TARGET_COLUMN] > 0).astype(int)
-
-            X = df[FINAL_FEATURES].values
-            y = df[TARGET_COLUMN].values
-
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=test_size, random_state=random_state, stratify=y
-            )
-
-            scaler = StandardScaler()
-            X_train_scaled = scaler.fit_transform(X_train)
-            X_test_scaled = scaler.transform(X_test)
-
-            client_train_datasets.append((X_train_scaled, y_train))
-            client_test_datasets.append((X_test_scaled, y_test))
-
-            print(
-                f"  Client {i} ({filename}): {len(df)} samples — "
-                f"train={len(y_train)}, test={len(y_test)}, "
-                f"pos_rate={y.mean():.1%}"
-=======
             df = df[FINAL_FEATURES + [TARGET_COLUMN]].copy()
 
             # Harmonise 'sex' string labels -> binary (1=Male, 0=Female)
@@ -455,7 +299,6 @@ def load_and_preprocess_data(
                 f"train={len(y_train_res)} (post-SMOTE, raw={len(y_train)}), "
                 f"val={len(y_val)}, test={len(y_test)}, "
                 f"pos_rate_raw={y.mean():.1%}"
->>>>>>> 3d539aa >>>>>>>
             )
 
         except FileNotFoundError:
@@ -494,3 +337,32 @@ def aggregate_metrics_fn(metrics: List[Tuple[int, Metrics]]) -> Metrics:
         for k in keys
         if any(k in m for _, m in valid)
     }
+
+
+def cluster_clients_by_distribution(
+    client_train_data: List[Tuple[np.ndarray, np.ndarray]],
+    n_clusters: int = 2,
+    random_state: int = 42,
+) -> Dict[str, int]:
+    """Partition clients into ``n_clusters`` groups by similarity of their
+    local feature distributions, for the FedCluster baseline.
+
+    Each client is represented by the mean feature vector of its local
+    (already-scaled) training data; KMeans groups clients whose local
+    distributions are most alike. The FedCluster baseline's cited source
+    does not fully specify its clustering criterion, so this is this
+    project's concrete instantiation of "cluster by data-distribution
+    difference".
+
+    Returns
+    -------
+    dict mapping Flower client id string ("0", "1", ...) to cluster index.
+    """
+    from sklearn.cluster import KMeans
+
+    fingerprints = np.stack([X.mean(axis=0) for X, _ in client_train_data])
+    n_clusters = min(n_clusters, len(client_train_data))
+    labels = KMeans(n_clusters=n_clusters, random_state=random_state, n_init=10).fit_predict(
+        fingerprints
+    )
+    return {str(i): int(label) for i, label in enumerate(labels)}

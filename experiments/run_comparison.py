@@ -1,19 +1,27 @@
 """
 experiments/run_comparison.py
 =============================
-Investigation 1 – Performance comparison across FL strategies.
+Investigation 1 - Performance comparison across FL strategies.
 
-Runs four strategies over 100 federated rounds using the five real-world
-cardiovascular datasets:
-    • FedAvg    (μ = 0, standard baseline)
-    • FedProx   (μ = 0.01, proximal regularisation only)
-    • FedCVR    (μ = 0.1, FedProx client + adaptive server aggregation)
-    • FedCVR+DP (FedCVR with Opacus Differential Privacy, noise σ = 1.1)
+Reproduces the paper's Table benchmark: six strategies over 100 federated
+rounds, all under the *same* client-side DP-SGD configuration
+(sigma=1.1, C=1.0), so that observed differences are attributable solely to
+server-side aggregation design ("For each method, the same client-side
+DP-SGD configuration is applied" - Section "Competing Methods"):
+    - FedAvg              (mu=0,    plain weighted-average server)
+    - FedProx (mu=0.01)    (proximal client, plain weighted-average server)
+    - FedCluster (k=2)     (plain FedAvg run independently per client cluster)
+    - FedAdagrad           (second-moment-only adaptive server optimiser)
+    - FedYogi              (sign-based second-moment adaptive server optimiser)
+    - FedCVR (ours)        (mu=0, DP-FedAdam server optimiser - Algorithm 1)
+
+The no-DP vs. DP privacy-utility trade-off for the proposed method alone is
+covered separately by ``run_dp_sensitivity.py`` (Investigation 3).
 
 Outputs
 -------
-  results/comparison_metrics.csv   – round-level metrics for all strategies
-  results/comparison_plot.png      – 2×2 metric comparison figure
+  results/comparison_metrics.csv   - round-level metrics for all strategies
+  results/comparison_plot.png      - 2x2 metric comparison figure
 
 Usage
 -----
@@ -30,12 +38,11 @@ import argparse
 import os
 import sys
 import warnings
-from typing import Dict, Optional
+from typing import Dict
 
 import flwr as fl
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
-import numpy as np
 import pandas as pd
 
 warnings.filterwarnings("ignore")
@@ -43,8 +50,13 @@ warnings.filterwarnings("ignore")
 # Allow running as a script from the repo root
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from fedcvr.baselines import FedAdagradStrategy, FedClusterStrategy, FedYogiStrategy
 from fedcvr.client import build_client
-from fedcvr.data_utils import aggregate_metrics_fn, load_and_preprocess_data
+from fedcvr.data_utils import (
+    aggregate_metrics_fn,
+    cluster_clients_by_distribution,
+    load_and_preprocess_data,
+)
 from fedcvr.strategy import FedCVRStrategy
 
 
@@ -52,42 +64,52 @@ from fedcvr.strategy import FedCVRStrategy
 # Experiment configuration
 # ---------------------------------------------------------------------------
 
+# Shared DP-SGD configuration applied identically to every method (sigma=1.1,
+# C=1.0), matching Table benchmark's caption in the paper.
+DP_CONFIG: Dict = {"noise_multiplier": 1.1, "max_grad_norm": 1.0}
+
 SCENARIOS: Dict[str, Dict] = {
     "FedAvg": {
         "mu": 0.0,
-        "dp": None,
+        "strategy_cls": FedCVRStrategy,
         "strategy_kwargs": {"eta": 0.0},   # disable Adam on server (plain FedAvg)
         "linestyle": "-",
         "color": "tab:blue",
     },
     "FedProx (μ=0.01)": {
         "mu": 0.01,
-        "dp": None,
+        "strategy_cls": FedCVRStrategy,
         "strategy_kwargs": {"eta": 0.0},   # proximal client, plain server
         "linestyle": "--",
         "color": "tab:orange",
     },
+    "FedCluster (k=2)": {
+        "mu": 0.0,
+        "strategy_cls": FedClusterStrategy,
+        "strategy_kwargs": {},             # cluster_assignment injected in run()
+        "linestyle": "-.",
+        "color": "tab:purple",
+    },
+    "FedAdagrad": {
+        "mu": 0.0,
+        "strategy_cls": FedAdagradStrategy,
+        "strategy_kwargs": {"eta": 0.1, "tau": 1e-3},
+        "linestyle": "--",
+        "color": "tab:brown",
+    },
+    "FedYogi": {
+        "mu": 0.0,
+        "strategy_cls": FedYogiStrategy,
+        "strategy_kwargs": {"eta": 0.1, "beta_1": 0.9, "beta_2": 0.999, "tau": 1e-3},
+        "linestyle": ":",
+        "color": "tab:pink",
+    },
     "FedCVR (ours)": {
-        "mu": 0.1,
-        "dp": None,
-<<<<<<< HEAD
-        "strategy_kwargs": {"eta": 0.01},  # full: proximal client + Adam server
-=======
-        "strategy_kwargs": {"eta": 0.1},   # full: proximal client + Adam server (eta=0.1)
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
+        "mu": 0.0,
+        "strategy_cls": FedCVRStrategy,
+        "strategy_kwargs": {"eta": 0.1},   # Algorithm 2 has no proximal term; only the Adam server optimiser differs from FedAvg
         "linestyle": "-",
         "color": "tab:green",
-    },
-    "FedCVR+DP (σ=1.1)": {
-        "mu": 0.1,
-        "dp": {"noise_multiplier": 1.1, "max_grad_norm": 1.0},
-<<<<<<< HEAD
-        "strategy_kwargs": {"eta": 0.01},
-=======
-        "strategy_kwargs": {"eta": 0.1},   # eta=0.1 as reported in the paper
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
-        "linestyle": ":",
-        "color": "tab:red",
     },
 }
 
@@ -108,32 +130,34 @@ def run(data_dir: str = ".", num_rounds: int = 100, out_dir: str = "results") ->
         sys.exit(1)
 
     num_clients = len(client_train_data)
+    cluster_assignment = cluster_clients_by_distribution(
+        client_train_data, n_clusters=2, random_state=42
+    )
     history_storage: Dict[str, fl.server.history.History] = {}
+
+    def make_client_fn():
+        def client_fn(cid: str) -> fl.client.Client:
+            return build_client(
+                cid=cid,
+                client_train_data=client_train_data,
+                client_test_data=client_test_data,
+                local_epochs=5,
+                use_dp=True,
+                dp_config=DP_CONFIG,
+            ).to_client()
+        return client_fn
 
     for name, cfg in SCENARIOS.items():
         print(f"\n{'='*60}")
         print(f"  Running: {name}")
         print(f"{'='*60}")
 
-        use_dp = cfg["dp"] is not None
+        strategy_kwargs = dict(cfg["strategy_kwargs"])
+        if cfg["strategy_cls"] is FedClusterStrategy:
+            strategy_kwargs["cluster_assignment"] = cluster_assignment
 
-        def make_client_fn(dp_cfg: Optional[Dict], mu_val: float):
-            def client_fn(cid: str) -> fl.client.Client:
-                return build_client(
-                    cid=cid,
-                    client_train_data=client_train_data,
-                    client_test_data=client_test_data,
-                    local_epochs=5,
-                    use_dp=dp_cfg is not None,
-                    dp_config=dp_cfg,
-                ).to_client()
-            return client_fn
-
-        # Override eta=0 to use plain FedAvg averaging on the server
-        eta = cfg["strategy_kwargs"].get("eta", 0.01)
-
-        strategy = FedCVRStrategy(
-            eta=eta,
+        strategy = cfg["strategy_cls"](
+            **strategy_kwargs,
             fraction_fit=1.0,
             fraction_evaluate=1.0,
             min_fit_clients=num_clients,
@@ -144,7 +168,7 @@ def run(data_dir: str = ".", num_rounds: int = 100, out_dir: str = "results") ->
         )
 
         history = fl.simulation.start_simulation(
-            client_fn=make_client_fn(cfg["dp"], cfg["mu"]),
+            client_fn=make_client_fn(),
             num_clients=num_clients,
             config=fl.server.ServerConfig(num_rounds=num_rounds),
             strategy=strategy,
@@ -201,7 +225,7 @@ def run(data_dir: str = ".", num_rounds: int = 100, out_dir: str = "results") ->
         ax.set_xlabel("Federated Round", fontsize=11)
 
     fig.suptitle(
-        "FedCVR vs. Baselines – Performance Comparison (100 rounds, 5 clients)",
+        "FedCVR vs. Baselines – Performance Comparison Under DP (σ=1.1, 100 rounds, 5 clients)",
         fontsize=15,
     )
     plt.tight_layout(rect=[0, 0, 1, 0.96])

@@ -16,7 +16,7 @@ Outputs
 
 Usage
 -----
-    python -m experiments.run_dp_sensitivity --data_dir ./data --rounds 50
+    python -m experiments.run_dp_sensitivity --data_dir ./data --rounds 5000
 """
 
 from __future__ import annotations
@@ -45,12 +45,9 @@ from fedcvr.strategy import FedCVRStrategy
 # DP scenario configuration
 # ---------------------------------------------------------------------------
 
-MU = 0.1         # proximal term (fixed for all DP scenarios)
-<<<<<<< HEAD
-SERVER_ETA = 0.01
-=======
+MU = 0.0         # no proximal term (Algorithm 2): the proposed method differs
+                 # from FedAvg only via the server-side Adam optimiser and DP-SGD
 SERVER_ETA = 0.1  # server Adam learning rate as reported in the paper (eta_s = 0.1)
->>>>>>> 3d539aa (fix: align code with paper (architecture, features, datasets, hyperparams))
 
 DP_SCENARIOS: Dict[str, Optional[Dict]] = {
     "No DP (Baseline)": None,
@@ -71,7 +68,7 @@ LINE_STYLES = {
 # Main simulation runner
 # ---------------------------------------------------------------------------
 
-def run(data_dir: str = ".", num_rounds: int = 50, out_dir: str = "results") -> None:
+def run(data_dir: str = ".", num_rounds: int = 5000, out_dir: str = "results") -> None:
     os.makedirs(out_dir, exist_ok=True)
 
     client_train_data, client_test_data, _ = load_and_preprocess_data(data_dir=data_dir)
@@ -187,8 +184,9 @@ if __name__ == "__main__":
     )
     parser.add_argument("--data_dir", type=str, default="data",
                         help="Directory containing the five CSV dataset files.")
-    parser.add_argument("--rounds", type=int, default=50,
-                        help="Number of federated communication rounds.")
+    parser.add_argument("--rounds", type=int, default=5000,
+                        help="Number of federated communication rounds (5,000 in the "
+                             "paper's longitudinal privacy-utility trade-off experiment).")
     parser.add_argument("--out_dir", type=str, default="results",
                         help="Directory to save metrics CSV and plot PNG.")
     args = parser.parse_args()

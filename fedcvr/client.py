@@ -1,15 +1,4 @@
 """
-<<<<<<< HEAD
-client.py – FedCVR Flower client.
-
-Each client trains a local DNN with:
-  1. FedProx proximal regularisation  – penalises deviation from the global
-     model, helping to tame client drift under non-IID data (μ parameter).
-  2. Differential Privacy via Opacus  – per-sample gradient clipping and
-     calibrated Gaussian noise injection before the update is transmitted.
-     When ``use_dp=False`` the client behaves as a standard FedProx client.
-
-=======
 client.py - FedCVR Flower client.
 
 Each client trains a local DNN with:
@@ -61,9 +50,6 @@ class FedCVRClient(NumPyClient):
     model       : Initialised ``Net`` instance.
     train_loader: DataLoader for local training data.
     test_loader : DataLoader for local evaluation data.
-<<<<<<< HEAD
-    pos_weight  : Class-imbalance correction weight for BCEWithLogitsLoss.
-=======
 
     local_epochs: Number of local SGD epochs per communication round.
     use_dp      : Whether to activate Opacus Differential Privacy.
@@ -76,9 +62,6 @@ class FedCVRClient(NumPyClient):
         model: Net,
         train_loader: DataLoader,
         test_loader: DataLoader,
-<<<<<<< HEAD
-        pos_weight: torch.Tensor,
-=======
 
         local_epochs: int = 5,
         use_dp: bool = False,
@@ -87,14 +70,6 @@ class FedCVRClient(NumPyClient):
         self.model = model
         self.train_loader = train_loader
         self.test_loader = test_loader
-<<<<<<< HEAD
-        self.pos_weight = pos_weight
-        self.local_epochs = local_epochs
-        self.use_dp = use_dp
-
-        self.optimizer = optim.SGD(self.model.parameters(), lr=0.01, momentum=0.9)
-        self.criterion = nn.BCEWithLogitsLoss(pos_weight=self.pos_weight)
-=======
         self.local_epochs = local_epochs
         self.use_dp = use_dp
 
@@ -106,7 +81,6 @@ class FedCVRClient(NumPyClient):
         # Binary Cross-Entropy loss. The model already applies sigmoid, so
         # outputs are probabilities in [0, 1].
         self.criterion = nn.BCELoss()
-
 
         if self.use_dp:
             if dp_config is None:
@@ -149,12 +123,6 @@ class FedCVRClient(NumPyClient):
         for _ in range(self.local_epochs):
             for features, labels in self.train_loader:
                 self.optimizer.zero_grad()
-<<<<<<< HEAD
-                outputs = self.model(features)
-                loss = self.criterion(outputs, labels)
-
-                # FedProx proximal term: (μ/2) ‖w − w_global‖²
-=======
                 outputs = self.model(features)   # probabilities in [0, 1]
                 loss = self.criterion(outputs, labels)
 
@@ -184,18 +152,10 @@ class FedCVRClient(NumPyClient):
 
         with torch.no_grad():
             for features, labels in self.test_loader:
-<<<<<<< HEAD
-                outputs = self.model(features)
-                total_loss += self.criterion(outputs, labels).item() * len(labels)
-                probs = torch.sigmoid(outputs)
-                all_labels.extend(labels.numpy().flatten().tolist())
-                all_preds.extend((probs >= 0.5).int().numpy().flatten().tolist())
-=======
                 outputs = self.model(features)   # probabilities in [0, 1]
                 total_loss += self.criterion(outputs, labels).item() * len(labels)
                 all_labels.extend(labels.numpy().flatten().tolist())
                 all_preds.extend((outputs >= 0.5).int().numpy().flatten().tolist())
-
 
         n = len(all_labels)
         if n == 0:
@@ -248,9 +208,6 @@ def build_client(
 
     model = Net(input_features=X_train.shape[1])
 
-<<<<<<< HEAD
-    def _to_loader(X, y, shuffle=False):
-=======
     def _to_loader(X: np.ndarray, y: np.ndarray, shuffle: bool = False) -> DataLoader:
 
         return DataLoader(
@@ -264,11 +221,6 @@ def build_client(
 
     # Opacus requires non-trivially-small batches; reduce if DP is active
     eff_bs = max(8, batch_size // 2) if use_dp else batch_size
-<<<<<<< HEAD
-    train_loader = _to_loader(X_train, y_train, shuffle=True)
-    # Rebuild with effective batch size when DP is on
-=======
-
 
     if use_dp:
         train_loader = DataLoader(
@@ -279,26 +231,15 @@ def build_client(
             batch_size=eff_bs,
             shuffle=True,
         )
-<<<<<<< HEAD
-    test_loader = _to_loader(X_test, y_test)
-
-    pos_count = float(y_train.sum())
-    neg_count = float(len(y_train) - pos_count)
-    pos_weight = torch.tensor(neg_count / pos_count if pos_count > 0 else 1.0)
-=======
     else:
         train_loader = _to_loader(X_train, y_train, shuffle=True)
 
     test_loader = _to_loader(X_test, y_test)
 
-
     return FedCVRClient(
         model=model,
         train_loader=train_loader,
         test_loader=test_loader,
-<<<<<<< HEAD
-        pos_weight=pos_weight,
-=======
 
         local_epochs=local_epochs,
         use_dp=use_dp,
