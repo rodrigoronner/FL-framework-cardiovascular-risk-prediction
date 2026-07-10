@@ -11,9 +11,9 @@ DP-SGD configuration is applied" - Section "Competing Methods"):
     - FedAvg              (mu=0,    plain weighted-average server)
     - FedProx (mu=0.01)    (proximal client, plain weighted-average server)
     - FedCluster (k=2)     (plain FedAvg run independently per client cluster)
-    - FedAdagrad           (second-moment-only adaptive server optimiser)
-    - FedYogi              (sign-based second-moment adaptive server optimiser)
-    - FedCVR (ours)        (mu=0, DP-FedAdam server optimiser - Algorithm 1)
+    - FedAdagrad           (second-moment-only adaptive server optimizer)
+    - FedYogi              (sign-based second-moment adaptive server optimizer)
+    - FedCVR (ours)        (mu=0, DP-FedAdam server optimizer - Algorithm 1)
 
 The no-DP vs. DP privacy-utility trade-off for the proposed method alone is
 covered separately by ``run_dp_sensitivity.py`` (Investigation 3).
