@@ -2,7 +2,7 @@
 strategy.py – FedCVR server-side aggregation strategy.
 
 ``FedCVRStrategy`` extends Flower's ``FedAvg`` with an Adam-style server
-optimiser that applies bias-corrected first- and second-moment estimation to
+an optimizer that applies bias-corrected first- and second-moment estimation to
 the aggregated pseudo-gradient (Δ = avg_client_update − current_global_weights).
 
 Server update rule (per round t)
@@ -14,17 +14,17 @@ Server update rule (per round t)
     v̂_t  = v_t / (1 − β₂ᵗ)                       # bias correction
     w_{t+1} = w_t + η · m̂_t / (√v̂_t + ε)        # parameter update
 
-Default hyper-parameters match those used in the paper experiments:
+Default hyperparameters match those used in the paper experiments:
     η = 0.1,  β₁ = 0.9,  β₂ = 0.999,  τ = 1e-3
 
 The class also stores per-round per-client evaluation metrics so that
 results can be inspected or exported after the simulation.
 
 ``_AdaptiveServerStrategy`` factors out the plumbing shared by every
-stateful server-side optimiser evaluated in the paper's benchmark
+stateful server-side optimizer evaluated in the paper's benchmark
 (``FedCVRStrategy`` here, and ``FedAdagradStrategy`` / ``FedYogiStrategy``
 in ``fedcvr.baselines``): bootstrapping w_0 from the first round's plain
-FedAvg result (Algorithm 1 requires w_0 as input and zero-initialises only
+FedAvg result (Algorithm 1 requires w_0 as input and zero-initializes only
 the moment vectors, never the model itself), and per-client evaluation
 metric logging. Subclasses only implement the per-round update rule.
 """
@@ -162,7 +162,7 @@ class FedCVRStrategy(_AdaptiveServerStrategy):
         self.beta_2 = beta_2
         self.tau = tau
 
-        # Moment vectors – initialised on first aggregation call
+        # Moment vectors – initialized on first aggregation call
         self._m: Optional[List[np.ndarray]] = None
         self._v: Optional[List[np.ndarray]] = None
 
@@ -173,7 +173,7 @@ class FedCVRStrategy(_AdaptiveServerStrategy):
         failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
     ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
         if self.eta == 0.0:
-            # eta == 0 disables the server-side Adam optimiser entirely:
+            # eta == 0 disables the server-side Adam optimizer entirely:
             # the server aggregation step is a simple weighted average
             # (used to emulate the FedAvg / FedProx baselines, per the
             # paper's description of those methods).
