@@ -43,18 +43,18 @@ DP-FedAdam is a federated learning framework for cardiovascular risk prediction 
 
 ```
 FL-framework-cardiovascular-risk-prediction/
-├── FedCVR/   # Core Python package
+├── fedcvr/   # Core Python package
 │   ├── __init__.py
 │   ├── model.py                   # DNN: Input(6)→64→ReLU→32→ReLU→1→Sigmoid
 │   ├── client.py                  # DP-SGD client via Opacus
 │   ├── strategy.py                # DP-FedAdam server (Adam aggregation + RDP)
+│   ├── baselines.py               # FedAdagrad, FedYogi, FedCluster baselines
 │   ├── rdp_accountant.py          # Per-client Rényi-DP accounting
-│   └── data_utils.py              # Harmonization, preprocessing, SMOTE
+│   └── data_utils.py              # Harmonization, preprocessing, SMOTE, clustering
 │
 ├── experiments/
-│   ├── run_benchmark.py           # 6-method comparison, 100 rounds, N=5 seeds
-│   ├── run_dp_sensitivity.py      # Privacy-utility trade-off across σ ∈ {0.8,1.1,1.5}
-│   └── run_longitudinal.py        # 5,000-round convergence study
+│   ├── run_comparison.py          # 6-method benchmark, all under DP, 100 rounds
+│   └── run_dp_sensitivity.py      # Privacy-utility trade-off, 5,000 rounds
 │
 ├── data/
 │   ├── README.md                  # Download instructions for all 5 datasets
@@ -64,6 +64,8 @@ FL-framework-cardiovascular-risk-prediction/
 ├── requirements.txt
 └── .gitignore
 ```
+
+> `FedAdagradStrategy`, `FedYogiStrategy`, and `FedClusterStrategy` (in `baselines.py`) are this repository's own reconstruction of those three baselines from their algorithmic descriptions in the paper; the original implementation used to produce the published benchmark numbers is not part of this repository.
 
 ---
 
@@ -128,10 +130,11 @@ The framework integrates a per-client RDP accountant. Because each mini-batch su
 
 ```python
 # Example: query per-client privacy expenditure after training
-accountant = RDPAccountant(noise_multiplier=1.1, clip_norm=1.0, batch_size=32)
-per_client_eps = accountant.compute_per_client_epsilon(
-    client_sizes=[2967, 952, 644, 800, 820],
-    epochs=5, rounds=100, delta=1e-5
+accountant = RDPAccountant(noise_multiplier=1.1, max_grad_norm=1.0, batch_size=32, delta=1e-5)
+per_client_eps = accountant.audit_all_clients(
+    n_train_per_client=[2967, 833, 644, 700, 718],
+    n_rounds=100, local_epochs=5,
+    client_labels=["H1", "H2", "H3", "H4", "H5"],
 )
 # Returns: {'H1': 4.8, 'H2': 11.2, 'H3': 13.4, 'H4': 12.1, 'H5': 11.9}
 ```
@@ -152,11 +155,12 @@ Five publicly available cardiac EHR datasets simulate a genuinely heterogeneous,
 
 All datasets are harmonized to **six common cardiovascular risk features**: age, systolic blood pressure, diastolic blood pressure, serum cholesterol, fasting blood glucose, and sex. Feature selection was based on cross-dataset availability, regardless of naming convention; no features were synthesized or imputed across sites.
 
-**Preprocessing pipeline (per client, training fold only):**
+**Preprocessing pipeline (per client):**
 1. IQR-based outlier capping (1.5-IQR rule, continuous features)
-2. Standardization to zero mean and unit variance
-3. Median imputation for missing values
+2. Median imputation for missing values
+3. Stratified 70/10/20 train/validation/test split
 4. SMOTE oversampling within the training fold (class imbalance correction)
+5. StandardScaler normalization (fit on the pre-SMOTE training fold, applied to all folds)
 
 **Splits:** 70% train / 10% validation / 20% test, stratified, `random_state=42`.
 
@@ -189,53 +193,37 @@ pip install -r requirements.txt
 
 Follow the instructions in `data/README.md` and place the five CSV files in the `data/` directory.
 
-### 2. Run the 6-method benchmark (100 rounds)
+### 2. Run the 6-method benchmark (100 rounds, all under DP)
 
 ```bash
-python -m experiments.run_benchmark \
+python -m experiments.run_comparison \
     --data_dir  data \
     --rounds    100 \
-    --n_runs    5 \
-    --sigma     1.1 \
     --out_dir   results
 ```
 
-Runs DP-FedAdam, FedAvg, FedProx, FedCluster, FedAdagrad, and FedYogi under identical DP constraints (ε ≈ 13.4, δ = 1e-5). Saves:
-- `results/benchmark_metrics.csv`
-- `results/benchmark_plot.png`
-- `results/per_client_epsilon.csv` — fairness audit table
+Runs DP-FedAdam, FedAvg, FedProx, FedCluster, FedAdagrad, and FedYogi, all under the same DP-SGD configuration (σ = 1.1, C = 1.0, ε ≈ 13.4, δ = 1e-5), so that observed differences are attributable solely to server-side aggregation design. Saves:
+- `results/comparison_metrics.csv`
+- `results/comparison_plot.png`
 
-### 3. Run the privacy-utility trade-off analysis
+### 3. Run the privacy-utility trade-off analysis (5,000 rounds)
 
 ```bash
 python -m experiments.run_dp_sensitivity \
     --data_dir  data \
-    --rounds    100 \
-    --sigma     0.8 1.1 1.5 \
-    --out_dir   results
-```
-
-Evaluates three privacy levels plus the no-DP baseline. Saves:
-- `results/dp_sensitivity_metrics.csv`
-- `results/privacy_trade_off.png` — the recall-versus-ε governance curve
-
-### 4. Run the longitudinal convergence study (5,000 rounds)
-
-```bash
-python -m experiments.run_longitudinal \
-    --data_dir  data \
     --rounds    5000 \
-    --sigma     1.1 \
     --out_dir   results
 ```
 
-Saves:
-- `results/longitudinal_loss.png`
-- `results/longitudinal_f1.png`
+Evaluates the proposed method alone across the no-DP baseline and three DP regimes (σ ∈ {0.8, 1.1, 1.5}, defined in `DP_SCENARIOS` inside the script). Saves:
+- `results/dp_sensitivity_metrics.csv`
+- `results/dp_sensitivity_plot.png` — the recall-versus-ε governance curve
 
 ---
 
 ## Results
+
+> The tables below reproduce the paper's published results (N = 5 independent seeds, averaged externally). `run_comparison.py` and `run_dp_sensitivity.py` as shipped here run a single seed per invocation (there is no `--n_runs`/seed CLI flag); reproducing the mean ± std figures requires editing `random_state` in the source and rerunning multiple times.
 
 ### Benchmark — All Methods Under DP (ε ≈ 13.4, σ = 1.1, N = 5 runs)
 
@@ -266,10 +254,10 @@ Statistical comparisons use Welch's two-tailed t-test across N = 5 independent r
 | Client | Dataset | n_train | q (sampling rate) | ε |
 |--------|---------|---------|-------------------|---|
 | H1 | Framingham | 2,967 | 0.011 | ≈ 4.8 |
-| H2 | IEEE-CHD | 952 | 0.034 | ≈ 11.2 |
+| H2 | IEEE-CHD | 833 | 0.038 | ≈ 11.2 |
 | H3 | UCI Cleveland | 644 | 0.050 | ≈ 13.4 |
-| H4 | FIC Pakistan | 800 | 0.040 | ≈ 12.1 |
-| H5 | Kaggle HD | 820 | 0.039 | ≈ 11.9 |
+| H4 | FIC Pakistan | 700 | 0.046 | ≈ 12.1 |
+| H5 | Kaggle HD | 718 | 0.045 | ≈ 11.9 |
 
 The 2.8× spread between H1 and H3 is driven entirely by dataset-size imbalance. Smaller sites pay a disproportionately higher privacy cost under the same nominal (σ, C). The globally reported ε is always the worst-case (H3 = 13.4).
 
