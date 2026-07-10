@@ -3,15 +3,15 @@ baselines.py – Competing server-side aggregation strategies used in the
 paper's Table benchmark comparison alongside ``FedCVRStrategy``.
 
 ``FedAdagradStrategy`` and ``FedYogiStrategy`` follow the FedOpt template of
-Reddi et al. (2021, "Adaptive Federated Optimization"): both subclass
+Reddi et al. (2021, "Adaptive Federated Optimization"): both subclasses
 ``_AdaptiveServerStrategy`` (see ``fedcvr.strategy``), which bootstraps w_0
-from the first round's plain FedAvg result and provides per-client metric
+from the first round's plain FedAvg result, and provides per-client metric
 logging; each strategy only supplies its own second-moment update rule.
 
 ``FedClusterStrategy`` implements the clustering baseline described in the
 paper: clients are partitioned into ``k`` groups by similarity of their
 local data distributions, and a separate FedAvg instance runs within each
-cluster (no adaptive optimiser, no proximal term). The paper's cited source
+cluster (no adaptive optimizer, no proximal term). The paper's cited source
 (You et al., 2023) does not fully specify the clustering criterion, so
 ``cluster_clients_by_distribution`` (see ``fedcvr.data_utils``) is this
 project's concrete instantiation of "cluster by data-distribution
@@ -124,7 +124,7 @@ class FedYogiStrategy(_AdaptiveServerStrategy):
 
 class FedClusterStrategy(FedAvg):
     """Clustered FL baseline: independent FedAvg per pre-computed client
-    cluster (no adaptive optimiser, no proximal term).
+    cluster (no adaptive optimizer, no proximal term).
 
     Clients are partitioned ahead of time (see
     ``data_utils.cluster_clients_by_distribution``) into ``k`` groups by
