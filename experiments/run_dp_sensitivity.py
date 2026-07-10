@@ -46,7 +46,7 @@ from fedcvr.strategy import FedCVRStrategy
 # ---------------------------------------------------------------------------
 
 MU = 0.0         # no proximal term (Algorithm 2): the proposed method differs
-                 # from FedAvg only via the server-side Adam optimiser and DP-SGD
+                 # from FedAvg only via the server-side Adam optimizer and DP-SGD
 SERVER_ETA = 0.1  # server Adam learning rate as reported in the paper (eta_s = 0.1)
 
 DP_SCENARIOS: Dict[str, Optional[Dict]] = {
