@@ -64,9 +64,6 @@ FL-framework-cardiovascular-risk-prediction/
 ├── requirements.txt
 └── .gitignore
 ```
-
-> `FedAdagradStrategy`, `FedYogiStrategy`, and `FedClusterStrategy` (in `baselines.py`) are this repository's own reconstruction of those three baselines from their algorithmic descriptions in the paper; the original implementation used to produce the published benchmark numbers is not part of this repository.
-
 ---
 
 ## Method
