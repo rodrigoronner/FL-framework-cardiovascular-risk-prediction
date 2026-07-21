@@ -99,8 +99,14 @@ class RDPAccountant:
         Parameters
         ----------
         n_train : int
-            Number of training samples for this client (post-SMOTE if SMOTE
-            was applied, since accounting should reflect actual gradient steps).
+            Number of *original* (pre-SMOTE) training samples for this
+            client. Per the paper's accounting convention, synthetic SMOTE
+            records do not contribute to the privacy amplification
+            calculation, so the sampling rate q = batch_size / n_train and
+            the resulting epsilon are always computed from the original
+            training-set size, even when the client trains over the
+            SMOTE-augmented set. See ``audit_paper_scenario`` below, which
+            reproduces the paper's Table with these pre-SMOTE sizes.
         n_rounds : int
             Total number of federated communication rounds.
         local_epochs : int

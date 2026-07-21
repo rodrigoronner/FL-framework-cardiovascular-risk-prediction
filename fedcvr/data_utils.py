@@ -8,13 +8,16 @@ healthcare data.
 
 Preprocessing pipeline (applied per client, in order)
 ------------------------------------------------------
-1. IQR-based outlier capping: values below Q1 - 1.5*IQR or above
-   Q3 + 1.5*IQR are clipped to the fence values.
-2. Median imputation for missing values.
-3. Binarisation of the target column (any positive class -> 1).
-4. SMOTE oversampling applied to the training fold only to address
+0. Binarisation of the target column (any positive class -> 1) and
+   stratified 70/10/20 train/validation/test split.
+1. IQR-based outlier capping: bounds (Q1 - 1.5*IQR, Q3 + 1.5*IQR) are
+   computed from the training fold only and applied to all folds.
+2. Median imputation for missing values: medians are computed from the
+   training fold only and applied to all folds, preventing leakage of
+   held-out statistics into training-time preprocessing.
+3. SMOTE oversampling applied to the training fold only to address
    class imbalance.
-5. StandardScaler normalization (fit on training fold, applied to all folds).
+4. StandardScaler normalization (fit on training fold, applied to all folds).
 
 Datasets
 --------
@@ -115,17 +118,26 @@ TARGET_COLUMN = "target"
 # Helper: IQR-based outlier capping
 # ---------------------------------------------------------------------------
 
-def _iqr_cap(df: pd.DataFrame, features: List[str]) -> pd.DataFrame:
-    """Clip each numeric feature to [Q1 - 1.5*IQR, Q3 + 1.5*IQR]."""
-    df = df.copy()
+def _iqr_bounds(df_train: pd.DataFrame, features: List[str]) -> Dict[str, Tuple[float, float]]:
+    """Compute [Q1 - 1.5*IQR, Q3 + 1.5*IQR] bounds per feature from the
+    training fold only, to be applied to train/val/test without leakage."""
+    bounds: Dict[str, Tuple[float, float]] = {}
     for col in features:
-        if col not in df.columns:
+        if col not in df_train.columns:
             continue
-        q1 = df[col].quantile(0.25)
-        q3 = df[col].quantile(0.75)
+        q1 = df_train[col].quantile(0.25)
+        q3 = df_train[col].quantile(0.75)
         iqr = q3 - q1
-        lower = q1 - 1.5 * iqr
-        upper = q3 + 1.5 * iqr
+        bounds[col] = (q1 - 1.5 * iqr, q3 + 1.5 * iqr)
+    return bounds
+
+
+def _apply_iqr_cap(
+    df: pd.DataFrame, bounds: Dict[str, Tuple[float, float]]
+) -> pd.DataFrame:
+    """Clip each feature in ``df`` to the bounds computed from the training fold."""
+    df = df.copy()
+    for col, (lower, upper) in bounds.items():
         df[col] = df[col].clip(lower=lower, upper=upper)
     return df
 
@@ -178,10 +190,12 @@ def load_and_preprocess_data(
     """Load and harmonize all five cardiovascular datasets.
 
     The preprocessing pipeline for each client is:
-        1. IQR-based outlier capping on numeric features.
-        2. Median imputation for remaining missing values.
-        3. Binarisation of the target column.
-        4. Stratified 70/10/20 train/validation/test split.
+        1. Binarisation of the target column.
+        2. Stratified 70/10/20 train/validation/test split.
+        3. IQR-based outlier capping (bounds from the training fold only).
+        4. Median imputation for remaining missing values (medians from the
+           training fold only) - both 3. and 4. are fit on the training
+           fold and applied unchanged to val/test, preventing leakage.
         5. SMOTE oversampling on the training fold only.
         6. StandardScaler normalization (fit on train, applied to val and test).
 
@@ -251,40 +265,58 @@ def load_and_preprocess_data(
             for col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
 
-            # Step 1: IQR-based outlier capping (on numeric features only)
-            df = _iqr_cap(df, FINAL_FEATURES)
-
-            # Step 2: Median imputation
-            df.fillna(df.median(numeric_only=True), inplace=True)
-            df.fillna(0, inplace=True)
-
-            # Step 3: Binarise target (any positive class -> 1)
+            # Binarise target (any positive class -> 1). Deterministic
+            # thresholding, so doing this before the split introduces no
+            # train/test leakage.
             df[TARGET_COLUMN] = (df[TARGET_COLUMN] > 0).astype(int)
+            y_full = df[TARGET_COLUMN].values
 
-            X = df[FINAL_FEATURES].values.astype(np.float32)
-            y = df[TARGET_COLUMN].values.astype(np.int64)
-
-            # Step 4: Stratified 70/10/20 split
-            # First split off the test set (20%)
-            X_trainval, X_test, y_trainval, y_test = train_test_split(
-                X, y,
+            # Step 1: Stratified 70/10/20 split, performed on the raw
+            # (pre-capping, pre-imputation) frame so that every subsequent
+            # preprocessing statistic (IQR bounds, medians, scaler) is fit
+            # on the training fold only and merely applied to val/test -
+            # matching the paper's stated no-leakage preprocessing protocol.
+            df_trainval, df_test = train_test_split(
+                df,
                 test_size=test_size,
                 random_state=random_state,
-                stratify=y,
+                stratify=y_full,
             )
-            # Then split validation from the remaining 80% -> val is 10/80 = 12.5%
             val_fraction_of_trainval = val_size / (1.0 - test_size)
-            X_train, X_val, y_train, y_val = train_test_split(
-                X_trainval, y_trainval,
+            df_train, df_val = train_test_split(
+                df_trainval,
                 test_size=val_fraction_of_trainval,
                 random_state=random_state,
-                stratify=y_trainval,
+                stratify=df_trainval[TARGET_COLUMN],
             )
 
-            # Step 5: SMOTE on training fold only
+            # Step 2: IQR-based outlier capping - bounds computed from the
+            # training fold only, applied identically to train/val/test.
+            iqr_bounds = _iqr_bounds(df_train, FINAL_FEATURES)
+            df_train = _apply_iqr_cap(df_train, iqr_bounds)
+            df_val = _apply_iqr_cap(df_val, iqr_bounds)
+            df_test = _apply_iqr_cap(df_test, iqr_bounds)
+
+            # Step 3: Median imputation - medians computed from the
+            # (capped) training fold only, applied identically to
+            # train/val/test, preventing any cross-fold leakage.
+            train_medians = df_train[FINAL_FEATURES].median()
+            for split_df in (df_train, df_val, df_test):
+                split_df[FINAL_FEATURES] = split_df[FINAL_FEATURES].fillna(train_medians)
+                split_df[FINAL_FEATURES] = split_df[FINAL_FEATURES].fillna(0)
+
+            X_train = df_train[FINAL_FEATURES].values.astype(np.float32)
+            y_train = df_train[TARGET_COLUMN].values.astype(np.int64)
+            X_val = df_val[FINAL_FEATURES].values.astype(np.float32)
+            y_val = df_val[TARGET_COLUMN].values.astype(np.int64)
+            X_test = df_test[FINAL_FEATURES].values.astype(np.float32)
+            y_test = df_test[TARGET_COLUMN].values.astype(np.int64)
+            y = y_full
+
+            # Step 4: SMOTE on training fold only
             X_train_res, y_train_res = _apply_smote(X_train, y_train, random_state)
 
-            # Step 6: StandardScaler (fit on pre-SMOTE train to avoid leakage)
+            # Step 5: StandardScaler (fit on pre-SMOTE train to avoid leakage)
             scaler = StandardScaler()
             scaler.fit(X_train)
             X_train_scaled = scaler.transform(X_train_res)

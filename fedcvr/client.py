@@ -219,21 +219,11 @@ def build_client(
             shuffle=shuffle,
         )
 
-    # Opacus requires non-trivially-small batches; reduce if DP is active
-    eff_bs = max(8, batch_size // 2) if use_dp else batch_size
-
-    if use_dp:
-        train_loader = DataLoader(
-            TensorDataset(
-                torch.tensor(X_train, dtype=torch.float32),
-                torch.tensor(y_train, dtype=torch.float32).view(-1, 1),
-            ),
-            batch_size=eff_bs,
-            shuffle=True,
-        )
-    else:
-        train_loader = _to_loader(X_train, y_train, shuffle=True)
-
+    # Batch size is fixed at `batch_size` (paper default L=32) regardless of
+    # whether DP is active, so that the sampling rate q = L / n_train used by
+    # the RDP accountant (fedcvr.rdp_accountant) matches the batch size
+    # Opacus actually trains with.
+    train_loader = _to_loader(X_train, y_train, shuffle=True)
     test_loader = _to_loader(X_test, y_test)
 
     return FedCVRClient(

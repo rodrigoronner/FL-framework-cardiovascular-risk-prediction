@@ -64,10 +64,10 @@ Note: diastolic BP (`diaBP`) is not present in the Cleveland dataset and will be
 
 | Field | Details |
 |-------|---------|
-| Source | Kaggle – Heart Attack Prediction |
-| URL | https://www.kaggle.com/datasets/imnikhilanand/heart-attack-prediction |
+| Source | Kaggle – Mortality Rate of Heart Patient, Pakistan Hospital (A. A. Khan) |
+| URL | https://www.kaggle.com/datasets/asgharalikhan/mortality-rate-heart-patient-Pakistan-hospital/data |
 | Samples | 1,000 |
-| Key target column | `Mortality` |
+| Key target column | `DEATH_EVENT` |
 | Key columns used | `Age`, `Gender` (sex), `Systolic BP`, `Diastolic BP`, `Cholestrol`, `FBS` |
 
 Download and save as `data/fic_pakistan.csv`.
