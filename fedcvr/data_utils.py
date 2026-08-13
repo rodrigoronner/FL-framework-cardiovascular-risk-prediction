@@ -69,15 +69,15 @@ COLUMN_MAPPINGS: List[Dict[str, str]] = [
         "glucose": "fbs",
         "TenYearCHD": "target",
     },
-    # H2 - IEEE Comprehensive Heart Disease
+    # H2 - IEEE Comprehensive Heart Disease (heart_statlog_cleveland_hungary_final;
+    # no diastolic-BP column - diaBP is median-imputed like H3 and H5 below)
     {
-        "Age": "age",
-        "Sex": "sex",
-        "SBP": "trestbps",
-        "DBP": "diaBP",
-        "Cholesterol": "chol",
-        "FastingBS": "fbs",
-        "HeartDisease": "target",
+        "age": "age",
+        "sex": "sex",
+        "resting bp s": "trestbps",
+        "cholesterol": "chol",
+        "fasting blood sugar": "fbs",
+        "target": "target",
     },
     # H3 - UCI Cleveland
     {
@@ -88,23 +88,29 @@ COLUMN_MAPPINGS: List[Dict[str, str]] = [
         "fbs": "fbs",
         "num": "target",
     },
-    # H4 - FIC Pakistan
+    # H4 - FIC Pakistan (target column is Mortality, not DEATH_EVENT; no
+    # diastolic-BP column - diaBP is median-imputed)
     {
         "Age": "age",
         "Gender": "sex",
-        "Systolic BP": "trestbps",
-        "Diastolic BP": "diaBP",
-        "Cholestrol": "chol",
-        "FBS": "fbs",
-        "DEATH_EVENT": "target",
+        "trestbps": "trestbps",
+        "chol": "chol",
+        "fbs": "fbs",
+        "Mortality": "target",
     },
-    # H5 - Kaggle Heart Prediction
+    # H5 - Cardiovascular Disease dataset (sulianova, Kaggle), substituted for
+    # the original rashadrmammadov/heart-disease-prediction source which
+    # became inaccessible; pre-processed via convert_cardio_sulianova.py.
+    # Cholesterol/Glucose are on a 3-level ordinal scale (1/2/3), not
+    # continuous mg/dL, unlike the other four clients (see conversion
+    # script docstring).
     {
         "Age": "age",
-        "Sex": "sex",
-        "RestingBP": "trestbps",
+        "Gender": "sex",
+        "SystolicBP": "trestbps",
+        "DiastolicBP": "diaBP",
         "Cholesterol": "chol",
-        "FastingBS": "fbs",
+        "Glucose": "fbs",
         "HeartDisease": "target",
     },
 ]
