@@ -185,6 +185,7 @@ def load_and_preprocess_data(
 ) -> Tuple[
     Optional[List[Tuple[np.ndarray, np.ndarray]]],
     Optional[List[Tuple[np.ndarray, np.ndarray]]],
+    Optional[List[Tuple[np.ndarray, np.ndarray]]],
     Optional[List[str]],
 ]:
     """Load and harmonize all five cardiovascular datasets.
@@ -200,8 +201,10 @@ def load_and_preprocess_data(
         6. StandardScaler normalization (fit on train, applied to val and test).
 
     Note: the Flower simulation uses only training and test folds. The
-    validation fold is stored in the returned ``client_val_datasets`` list
-    and can be used for hyper-parameter tuning outside the FL loop.
+    validation fold is returned separately as ``client_val_datasets`` and
+    is intended for hyperparameter tuning (see ``experiments/run_hpo.py``)
+    outside the FL loop, so that the held-out test folds used for the
+    benchmark and privacy-utility tables are never touched during tuning.
 
     Parameters
     ----------
@@ -217,10 +220,11 @@ def load_and_preprocess_data(
     Returns
     -------
     client_train_datasets : list of (X_train, y_train) arrays (post-SMOTE).
+    client_val_datasets   : list of (X_val,   y_val)   arrays (pre-SMOTE).
     client_test_datasets  : list of (X_test,  y_test)  arrays.
     filenames             : list of dataset file names (same order).
 
-    All three return values are ``None`` if loading fails for any dataset.
+    All four return values are ``None`` if loading fails for any dataset.
     """
     import os
 
@@ -229,6 +233,7 @@ def load_and_preprocess_data(
     print(f"    Split: 70% train / {int(val_size*100)}% val / {int(test_size*100)}% test")
 
     client_train_datasets: List[Tuple[np.ndarray, np.ndarray]] = []
+    client_val_datasets: List[Tuple[np.ndarray, np.ndarray]] = []
     client_test_datasets: List[Tuple[np.ndarray, np.ndarray]] = []
 
     for i, filename in enumerate(FILENAMES):
@@ -324,6 +329,7 @@ def load_and_preprocess_data(
             X_test_scaled = scaler.transform(X_test)
 
             client_train_datasets.append((X_train_scaled, y_train_res))
+            client_val_datasets.append((X_val_scaled, y_val))
             client_test_datasets.append((X_test_scaled, y_test))
 
             print(
@@ -338,12 +344,12 @@ def load_and_preprocess_data(
                 f"ERROR: '{filepath}' not found. "
                 "See data/README.md for download instructions."
             )
-            return None, None, None
+            return None, None, None, None
         except Exception as exc:
             print(f"ERROR processing {filename}: {exc}")
-            return None, None, None
+            return None, None, None, None
 
-    return client_train_datasets, client_test_datasets, FILENAMES
+    return client_train_datasets, client_val_datasets, client_test_datasets, FILENAMES
 
 
 def aggregate_metrics_fn(metrics: List[Tuple[int, Metrics]]) -> Metrics:

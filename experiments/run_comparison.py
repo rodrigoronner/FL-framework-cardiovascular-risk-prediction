@@ -35,10 +35,11 @@ Usage
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 import warnings
-from typing import Dict
+from typing import Dict, Optional
 
 import flwr as fl
 import matplotlib.pyplot as plt
@@ -118,16 +119,32 @@ SCENARIOS: Dict[str, Dict] = {
 # Main simulation runner
 # ---------------------------------------------------------------------------
 
-def run(data_dir: str = ".", num_rounds: int = 100, out_dir: str = "results") -> None:
+def run(
+    data_dir: str = ".",
+    num_rounds: int = 100,
+    out_dir: str = "results",
+    hyperparams_path: Optional[str] = None,
+) -> None:
     os.makedirs(out_dir, exist_ok=True)
 
     # Load datasets
-    client_train_data, client_test_data, dataset_names = load_and_preprocess_data(
+    client_train_data, _client_val_data, client_test_data, dataset_names = load_and_preprocess_data(
         data_dir=data_dir
     )
     if client_train_data is None:
         print("ERROR: Could not load datasets. Aborting.")
         sys.exit(1)
+
+    if hyperparams_path is not None:
+        with open(hyperparams_path) as f:
+            tuned = json.load(f)["best_params"]
+        SCENARIOS["FedCVR (ours)"]["strategy_kwargs"] = {
+            "eta": tuned["eta"],
+            "beta_1": tuned["beta_1"],
+            "beta_2": tuned["beta_2"],
+            "tau": tuned["tau"],
+        }
+        print(f"Loaded Optuna-tuned hyperparameters from {hyperparams_path}: {tuned}")
 
     num_clients = len(client_train_data)
     cluster_assignment = cluster_clients_by_distribution(
@@ -247,6 +264,15 @@ if __name__ == "__main__":
                         help="Number of federated communication rounds.")
     parser.add_argument("--out_dir", type=str, default="results",
                         help="Directory to save metrics CSV and plot PNG.")
+    parser.add_argument("--hyperparams", type=str, default=None,
+                        help="Path to best_hyperparameters.json produced by "
+                             "experiments/run_hpo.py; overrides the proposed "
+                             "method's eta/beta_1/beta_2/tau if given.")
     args = parser.parse_args()
 
-    run(data_dir=args.data_dir, num_rounds=args.rounds, out_dir=args.out_dir)
+    run(
+        data_dir=args.data_dir,
+        num_rounds=args.rounds,
+        out_dir=args.out_dir,
+        hyperparams_path=args.hyperparams,
+    )

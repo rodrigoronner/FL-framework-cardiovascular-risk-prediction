@@ -22,6 +22,7 @@ Usage
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 import warnings
@@ -47,7 +48,10 @@ from fedcvr.strategy import FedCVRStrategy
 
 MU = 0.0         # no proximal term (Algorithm 2): the proposed method differs
                  # from FedAvg only via the server-side Adam optimizer and DP-SGD
-SERVER_ETA = 0.1  # server Adam learning rate as reported in the paper (eta_s = 0.1)
+DEFAULT_SERVER_KWARGS: Dict = {
+    "eta": 0.1, "beta_1": 0.9, "beta_2": 0.999, "tau": 1e-3,
+}  # server Adam hyperparameters as reported in the paper; overridden by
+   # --hyperparams if an Optuna run_hpo.py output is supplied.
 
 DP_SCENARIOS: Dict[str, Optional[Dict]] = {
     "No DP (Baseline)": None,
@@ -68,13 +72,25 @@ LINE_STYLES = {
 # Main simulation runner
 # ---------------------------------------------------------------------------
 
-def run(data_dir: str = ".", num_rounds: int = 5000, out_dir: str = "results") -> None:
+def run(
+    data_dir: str = ".",
+    num_rounds: int = 5000,
+    out_dir: str = "results",
+    hyperparams_path: Optional[str] = None,
+) -> None:
     os.makedirs(out_dir, exist_ok=True)
 
-    client_train_data, client_test_data, _ = load_and_preprocess_data(data_dir=data_dir)
+    client_train_data, _client_val_data, client_test_data, _ = load_and_preprocess_data(data_dir=data_dir)
     if client_train_data is None:
         print("ERROR: Could not load datasets. Aborting.")
         sys.exit(1)
+
+    server_kwargs = dict(DEFAULT_SERVER_KWARGS)
+    if hyperparams_path is not None:
+        with open(hyperparams_path) as f:
+            tuned = json.load(f)["best_params"]
+        server_kwargs.update(tuned)
+        print(f"Loaded Optuna-tuned hyperparameters from {hyperparams_path}: {tuned}")
 
     num_clients = len(client_train_data)
     history_storage: Dict[str, fl.server.history.History] = {}
@@ -97,7 +113,7 @@ def run(data_dir: str = ".", num_rounds: int = 5000, out_dir: str = "results") -
             return client_fn
 
         strategy = FedCVRStrategy(
-            eta=SERVER_ETA,
+            **server_kwargs,
             fraction_fit=1.0,
             fraction_evaluate=1.0,
             min_fit_clients=num_clients,
@@ -189,6 +205,15 @@ if __name__ == "__main__":
                              "paper's longitudinal privacy-utility trade-off experiment).")
     parser.add_argument("--out_dir", type=str, default="results",
                         help="Directory to save metrics CSV and plot PNG.")
+    parser.add_argument("--hyperparams", type=str, default=None,
+                        help="Path to best_hyperparameters.json produced by "
+                             "experiments/run_hpo.py; overrides the server-side "
+                             "eta/beta_1/beta_2/tau if given.")
     args = parser.parse_args()
 
-    run(data_dir=args.data_dir, num_rounds=args.rounds, out_dir=args.out_dir)
+    run(
+        data_dir=args.data_dir,
+        num_rounds=args.rounds,
+        out_dir=args.out_dir,
+        hyperparams_path=args.hyperparams,
+    )
