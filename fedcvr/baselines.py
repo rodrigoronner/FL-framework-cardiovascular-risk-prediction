@@ -1,6 +1,6 @@
 """
 baselines.py - Competing server-side aggregation strategies benchmarked
-alongside FedCVRStrategy: FedAdagrad and FedYogi (FedOpt template, Reddi
+alongside DPFedAdamStrategy: FedAdagrad and FedYogi (FedOpt template, Reddi
 et al. 2021) subclass ``_AdaptiveServerStrategy`` (fedcvr.strategy) and
 supply their own second-moment update rule; FedCluster runs independent
 FedAvg within each of k pre-computed client clusters (KMeans over each

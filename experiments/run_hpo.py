@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from fedcvr.client import build_client
 from fedcvr.data_utils import aggregate_metrics_fn, load_and_preprocess_data
-from fedcvr.strategy import FedCVRStrategy
+from fedcvr.strategy import DPFedAdamStrategy
 
 
 def _objective_factory(
@@ -55,7 +55,7 @@ def _objective_factory(
                 dp_config=dp_config if use_dp else None,
             ).to_client()
 
-        strategy = FedCVRStrategy(
+        strategy = DPFedAdamStrategy(
             eta=eta,
             beta_1=beta_1,
             beta_2=beta_2,
@@ -156,7 +156,7 @@ def run(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="FedCVR - Optuna hyperparameter search for DP-FedAdam server optimizer"
+        description="Optuna hyperparameter search for the DP-FedAdam server optimizer"
     )
     parser.add_argument("--data_dir", type=str, default="data")
     parser.add_argument("--n_trials", type=int, default=40)

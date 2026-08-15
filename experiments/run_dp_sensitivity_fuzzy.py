@@ -50,7 +50,7 @@ from fedcvr.data_utils import (
 from fedcvr.evaluation import calibrated_final_evaluation
 from fedcvr.fuzzy_fairness import FairnessRebalanceReport, FuzzyFairnessController
 from fedcvr.rdp_accountant import RDPAccountant
-from fedcvr.strategy import FedCVRStrategy
+from fedcvr.strategy import DPFedAdamStrategy
 
 MU = 0.0  # no proximal term - matches run_dp_sensitivity.py's Algorithm 2 convention
 DEFAULT_SERVER_KWARGS: Dict = {
@@ -159,7 +159,7 @@ def run(
                 ).to_client()
             return client_fn
 
-        strategy = FedCVRStrategy(
+        strategy = DPFedAdamStrategy(
             **server_kwargs,
             fraction_fit=1.0,
             fraction_evaluate=1.0,
@@ -280,7 +280,7 @@ def run(
         ax.set_xlabel("Federated Round", fontsize=11)
 
     fig.suptitle(
-        f"FedCVR + Fuzzy Fairness Rebalancing - DP Sensitivity, {num_rounds} rounds, {num_clients} clients",
+        f"DP-FedAdam + Fuzzy Fairness Rebalancing - DP Sensitivity, {num_rounds} rounds, {num_clients} clients",
         fontsize=15,
     )
     plt.tight_layout(rect=[0, 0, 1, 0.96])
@@ -292,7 +292,7 @@ def run(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="FedCVR - DP sensitivity with fuzzy per-client batch-size rebalancing"
+        description="DP-FedAdam - DP sensitivity with fuzzy per-client batch-size rebalancing"
     )
     parser.add_argument("--data_dir", type=str, default="data",
                         help="Directory containing the four CSV dataset files.")

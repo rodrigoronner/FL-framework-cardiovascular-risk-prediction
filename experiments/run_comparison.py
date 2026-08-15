@@ -2,7 +2,7 @@
 experiments/run_comparison.py
 =============================
 Benchmark comparison across 6 FL strategies (FedAvg, FedProx, FedCluster,
-FedAdagrad, FedYogi, FedCVR), all under the same client-side configuration
+FedAdagrad, FedYogi, DP-FedAdam), all under the same client-side configuration
 so differences are attributable to server-side aggregation design alone.
 Pass --no_dp for the no-privacy stage. See run_dp_sensitivity.py /
 run_dp_sensitivity_fuzzy.py / run_privacy_budget_test.py for the DP-only
@@ -45,7 +45,7 @@ from fedcvr.data_utils import (
     load_and_preprocess_data,
 )
 from fedcvr.evaluation import calibrated_final_evaluation
-from fedcvr.strategy import FedCVRStrategy
+from fedcvr.strategy import DPFedAdamStrategy
 
 
 # ---------------------------------------------------------------------------
@@ -58,14 +58,14 @@ DP_CONFIG: Dict = {"noise_multiplier": 1.1, "max_grad_norm": 1.0}
 SCENARIOS: Dict[str, Dict] = {
     "FedAvg": {
         "mu": 0.0,
-        "strategy_cls": FedCVRStrategy,
+        "strategy_cls": DPFedAdamStrategy,
         "strategy_kwargs": {"eta": 0.0},   # disable Adam on server (plain FedAvg)
         "linestyle": "-",
         "color": "tab:blue",
     },
     "FedProx (μ=0.01)": {
         "mu": 0.01,
-        "strategy_cls": FedCVRStrategy,
+        "strategy_cls": DPFedAdamStrategy,
         "strategy_kwargs": {"eta": 0.0},   # proximal client, plain server
         "linestyle": "--",
         "color": "tab:orange",
@@ -91,9 +91,9 @@ SCENARIOS: Dict[str, Dict] = {
         "linestyle": ":",
         "color": "tab:pink",
     },
-    "FedCVR (ours)": {
+    "DP-FedAdam (ours)": {
         "mu": 0.0,
-        "strategy_cls": FedCVRStrategy,
+        "strategy_cls": DPFedAdamStrategy,
         "strategy_kwargs": {"eta": 0.1},   # Algorithm 2 has no proximal term; only the Adam server optimiser differs from FedAvg
         "linestyle": "-",
         "color": "tab:green",
@@ -135,7 +135,7 @@ def run(
     if hyperparams_path is not None:
         with open(hyperparams_path) as f:
             tuned = json.load(f)["best_params"]
-        SCENARIOS["FedCVR (ours)"]["strategy_kwargs"] = {
+        SCENARIOS["DP-FedAdam (ours)"]["strategy_kwargs"] = {
             "eta": tuned["eta"],
             "beta_1": tuned["beta_1"],
             "beta_2": tuned["beta_2"],
@@ -294,7 +294,7 @@ def run(
 
     dp_label = f"Under DP (σ={DP_CONFIG['noise_multiplier']})" if use_dp else "No DP (plain FL)"
     fig.suptitle(
-        f"FedCVR vs. Baselines – Performance Comparison {dp_label}, {num_rounds} rounds, {num_clients} clients",
+        f"DP-FedAdam vs. Baselines – Performance Comparison {dp_label}, {num_rounds} rounds, {num_clients} clients",
         fontsize=15,
     )
     plt.tight_layout(rect=[0, 0, 1, 0.96])
@@ -309,7 +309,7 @@ def run(
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="FedCVR – Investigation 1: Strategy comparison")
+    parser = argparse.ArgumentParser(description="DP-FedAdam – Investigation 1: Strategy comparison")
     parser.add_argument("--data_dir", type=str, default="data",
                         help="Directory containing the five CSV dataset files.")
     parser.add_argument("--rounds", type=int, default=100,

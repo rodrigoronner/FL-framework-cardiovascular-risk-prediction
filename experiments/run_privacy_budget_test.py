@@ -41,7 +41,7 @@ from fedcvr.client import build_client
 from fedcvr.data_utils import aggregate_metrics_fn, get_pre_smote_train_sizes, load_and_preprocess_data
 from fedcvr.evaluation import calibrated_final_evaluation
 from fedcvr.rdp_accountant import RDPAccountant
-from fedcvr.strategy import FedCVRStrategy
+from fedcvr.strategy import DPFedAdamStrategy
 
 MU = 0.0
 DEFAULT_SERVER_KWARGS: Dict = {
@@ -132,7 +132,7 @@ def run(
                 ).to_client()
             return client_fn
 
-        strategy = FedCVRStrategy(
+        strategy = DPFedAdamStrategy(
             **server_kwargs,
             fraction_fit=1.0,
             fraction_evaluate=1.0,
@@ -230,7 +230,7 @@ def run(
     for ax in axes[2:]:
         ax.set_xlabel("Federated Round", fontsize=11)
     fig.suptitle(
-        f"FedCVR - Single-Digit-Epsilon Privacy Budget Test, {num_rounds} rounds, {num_clients} clients",
+        f"DP-FedAdam - Single-Digit-Epsilon Privacy Budget Test, {num_rounds} rounds, {num_clients} clients",
         fontsize=15,
     )
     plt.tight_layout(rect=[0, 0, 1, 0.96])
@@ -242,7 +242,7 @@ def run(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="FedCVR - test whether single-digit epsilon is reachable at the full 100-round protocol"
+        description="DP-FedAdam - test whether single-digit epsilon is reachable at the full 100-round protocol"
     )
     parser.add_argument("--data_dir", type=str, default="data")
     parser.add_argument("--rounds", type=int, default=100)

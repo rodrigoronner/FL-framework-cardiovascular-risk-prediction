@@ -1,6 +1,6 @@
 # Data Directory
 
-This directory should contain the four cardiovascular CSV files used in the FedCVR experiments.
+This directory should contain the four cardiovascular CSV files used in the DP-FedAdam experiments.
 The datasets are **not included** in the repository because they are publicly available under their
 own licenses. Follow the download instructions below, then place each file in `data/` with the
 exact filename shown.

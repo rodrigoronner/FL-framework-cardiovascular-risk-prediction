@@ -1,5 +1,5 @@
 """
-strategy.py - FedCVR server-side aggregation strategy. ``FedCVRStrategy``
+strategy.py - DP-FedAdam server-side aggregation strategy. ``DPFedAdamStrategy``
 extends Flower's ``FedAvg`` with a DP-FedAdam server optimizer applying
 bias-corrected first/second-moment estimation to the aggregated
 pseudo-gradient (delta = avg_client_update - current_global_weights):
@@ -126,7 +126,7 @@ class _AdaptiveServerStrategy(FedAvg):
         return aggregated_loss, aggregated_metrics
 
 
-class FedCVRStrategy(_AdaptiveServerStrategy):
+class DPFedAdamStrategy(_AdaptiveServerStrategy):
     """FedAvg + Adam-style server optimiser + per-client metric logging.
 
     Parameters

@@ -1,5 +1,5 @@
 """
-client.py - FedCVR Flower client. Local DNN trained with FedProx proximal
+client.py - DP-FedAdam Flower client. Local DNN trained with FedProx proximal
 regularisation (mu) and optional client-side DP (Opacus DP-SGD). Vanilla
 SGD, no client-side momentum - see README "Client Update" for why.
 """
@@ -25,7 +25,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from .model import Net
 
 
-class FedCVRClient(NumPyClient):
+class DPFedAdamClient(NumPyClient):
     """Flower client implementing FedProx + optional client-side DP.
 
     Parameters
@@ -167,8 +167,8 @@ def build_client(
     local_epochs: int = 5,
     use_dp: bool = False,
     dp_config: Optional[Dict] = None,
-) -> "FedCVRClient":
-    """Construct a ``FedCVRClient`` from pre-split numpy arrays.
+) -> "DPFedAdamClient":
+    """Construct a ``DPFedAdamClient`` from pre-split numpy arrays.
 
     Parameters
     ----------
@@ -200,7 +200,7 @@ def build_client(
     train_loader = _to_loader(X_train, y_train, shuffle=True)
     test_loader = _to_loader(X_test, y_test)
 
-    return FedCVRClient(
+    return DPFedAdamClient(
         model=model,
         train_loader=train_loader,
         test_loader=test_loader,

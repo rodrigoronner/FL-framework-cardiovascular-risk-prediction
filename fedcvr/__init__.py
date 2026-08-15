@@ -1,5 +1,5 @@
 """
-FedCVR - Federated Cardiovascular Risk Prediction
+DP-FedAdam - Federated Cardiovascular Risk Prediction
 
 Privacy-preserving federated learning: client-side DP-SGD (Opacus),
 server-side DP-FedAdam, per-client RDP accounting, fuzzy fairness
@@ -7,8 +7,8 @@ rebalancing, and FedProx/FedCluster/FedAdagrad/FedYogi baselines.
 """
 
 from .model import Net
-from .client import FedCVRClient, build_client
-from .strategy import FedCVRStrategy
+from .client import DPFedAdamClient, build_client
+from .strategy import DPFedAdamStrategy
 from .baselines import FedAdagradStrategy, FedYogiStrategy, FedClusterStrategy
 from .data_utils import (
     load_and_preprocess_data,
@@ -20,9 +20,9 @@ from .fuzzy_fairness import FuzzyFairnessController
 
 __all__ = [
     "Net",
-    "FedCVRClient",
+    "DPFedAdamClient",
     "build_client",
-    "FedCVRStrategy",
+    "DPFedAdamStrategy",
     "FedAdagradStrategy",
     "FedYogiStrategy",
     "FedClusterStrategy",

@@ -1,7 +1,7 @@
 """
 experiments/run_dp_sensitivity.py
 ==================================
-Privacy-utility trade-off of FedCVR across four DP regimes: No DP,
+Privacy-utility trade-off of DP-FedAdam across four DP regimes: No DP,
 Low (sigma=0.8), Medium (sigma=1.1), High (sigma=1.5) - fixed batch
 size L=32 for every client. See run_privacy_budget_test.py for the
 single-digit-epsilon configuration ultimately adopted.
@@ -36,7 +36,7 @@ from flwr.common import parameters_to_ndarrays
 from fedcvr.client import build_client
 from fedcvr.data_utils import aggregate_metrics_fn, load_and_preprocess_data
 from fedcvr.evaluation import calibrated_final_evaluation
-from fedcvr.strategy import FedCVRStrategy
+from fedcvr.strategy import DPFedAdamStrategy
 
 
 # ---------------------------------------------------------------------------
@@ -117,7 +117,7 @@ def run(
                 ).to_client()
             return client_fn
 
-        strategy = FedCVRStrategy(
+        strategy = DPFedAdamStrategy(
             **server_kwargs,
             fraction_fit=1.0,
             fraction_evaluate=1.0,
@@ -224,7 +224,7 @@ def run(
         ax.set_xlabel("Federated Round", fontsize=11)
 
     fig.suptitle(
-        "FedCVR – Privacy-Utility Trade-off Analysis (DP Sensitivity)",
+        "DP-FedAdam – Privacy-Utility Trade-off Analysis (DP Sensitivity)",
         fontsize=15,
     )
     plt.tight_layout(rect=[0, 0, 1, 0.96])
@@ -240,7 +240,7 @@ def run(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="FedCVR – Investigation 3: DP sensitivity analysis"
+        description="DP-FedAdam – Investigation 3: DP sensitivity analysis"
     )
     parser.add_argument("--data_dir", type=str, default="data",
                         help="Directory containing the four CSV dataset files.")

@@ -10,31 +10,32 @@
 
 DP-FedAdam is a federated learning framework for cardiovascular risk prediction that treats the server-side Adam optimizer and the client-side DP-SGD privacy mechanism as a single, jointly designed noise-filtering system. Unlike conventional DP-FL pipelines that compose these components as independent black boxes, the framework makes their interaction explicit in closed form, establishing three properties demanded by the target clinical setting: interpretability, explainability, and ethical governability.
 
-**Core theoretical insight.** The server's first-moment accumulator acts as a temporal low-pass filter over the zero-mean Gaussian DP noise injected by DP-SGD. Because the true gradient signal is persistent near a minimum while the noise is zero-mean, momentum accumulates the signal constructively and progressively cancels the noise. The steady-state variance of the momentum vector is bounded by Var(g_noise) · (1 − β₁) / (1 + β₁), which at β₁ = 0.9 yields an effective 19× variance reduction compared with a stateless aggregator. The argument is stated in a single closed-form equation and can be communicated to a clinician or data protection officer in one paragraph, without a surrogate model.
+**Core theoretical insight.** The server's first-moment accumulator acts as a temporal low-pass filter over the zero-mean Gaussian DP noise injected by DP-SGD. Because the true gradient signal is persistent near a minimum while the noise is zero-mean, momentum accumulates the signal constructively and progressively cancels the noise. The steady-state variance of the momentum vector is bounded by Var(g_noise) · (1 − β₁) / (1 + β₁), which at the adopted configuration's tuned β₁ = 0.782 (see Hyperparameter Reference) yields an effective 8.2× variance reduction compared with a stateless aggregator — rising to 19× at the conventional default β₁ = 0.9, used here only as an upper-bound illustration, not the adopted setting. The argument is stated in a single closed-form equation and can be communicated to a clinician or data protection officer in one paragraph, without a surrogate model.
 
-**Fairness audit.** A per-client Rényi Differential Privacy (RDP) accountant reports individual privacy expenditure for each participating site. Under the primary configuration (σ = 1.1, C = 1.0, L = 32, E = 5, T = 100), per-client ε varies with dataset-size imbalance — smaller sites pay a higher privacy cost via subsampling amplification for the same nominal (σ, C). See the Results section (pending re-run, see note below) for current per-client figures. Making the spread explicit converts a cryptographically honest but ethically one-sided single-number ε into an auditable fairness table, and a Mamdani fuzzy controller (`fedcvr/fuzzy_fairness.py`) can actively narrow it by recommending a per-client batch-size adjustment.
+**Fairness audit.** A per-client Rényi Differential Privacy (RDP) accountant reports individual privacy expenditure for each participating site. Under the adopted configuration (σ = 2.5, C = 1.0, L = 32 base batch size, local_epochs = 1, T = 100 — see Results §5), per-client ε varies with dataset-size imbalance — smaller sites pay a higher privacy cost via subsampling amplification for the same nominal (σ, C). See Results §4–§6 below for the current per-client figures and the fuzzy-rebalanced comparison. Making the spread explicit converts a cryptographically honest but ethically one-sided single-number ε into an auditable fairness table, and a Mamdani fuzzy controller (`fedcvr/fuzzy_fairness.py`) actively narrows it by recommending a per-client batch-size adjustment.
 
-**Ethical deployment constraint.** A recall-versus-ε governance curve, grounded in the 2021 ESC and 2019 ACC/AHA cardiovascular prevention guidelines, shows that recall is the clinical metric most sensitive to privacy tightening: across the full privacy range, it falls 23.3 percentage points (78.7% → 55.4%), while accuracy declines only 3.6 points. The curve serves as an explainable governance tool that ethics committees and data protection officers can use to negotiate a clinically safe lower bound on the deployable privacy budget.
+**Ethical deployment constraint.** A recall-versus-σ sensitivity sweep (Results §3), grounded in the 2021 ESC and 2019 ACC/AHA cardiovascular prevention guidelines, shows that recall is the clinical metric most sensitive to privacy tightening, though for this architecture it does not degrade monotonically with noise: across the tested range (σ ∈ {0.8, 1.1, 1.5} at local_epochs=5), recall varies by only about 5 percentage points (85.4%–90.4%) and every DP setting matches or exceeds the no-DP baseline. The sweep serves as an explainable governance tool that ethics committees and data protection officers can use to negotiate a clinically safe lower bound on the deployable privacy budget, rather than assuming a monotonic trade-off that this architecture does not exhibit.
 
 ```
-                 ┌─────────────────────────────────────────────────────┐
-                 │               Federated Server                       │
-                 │   Adaptive Optimizer  (β₁=0.9, β₂=0.999)           │
-                 │   m_t = β₁·m_{t-1} + (1−β₁)·ḡ_t   ← low-pass     │
-                 │   w_{t+1} = w_t − η · m̂_t / (√v̂_t + τ)           │
-                 │   RDP Accountant  →  per-client ε audit             │
-                 └──────┬────────────┬────────────┬────────────┬───────┘
-                        │  w_t       │            │            │
-           ┌────────────▼──┐   ┌─────▼──────┐   ┌─▼──────────┐   ...
-           │  H1 Z-Alizadeh│   │  H2 IEEE-  │   │ H3 UCI     │
-           │  Sani, n=303  │   │  CHD 1,190 │   │ Cleveland  │
-           │               │   │            │   │ 920        │
-           │  Local SGD    │   │  Local SGD │   │ Local SGD  │
-           │  DP-SGD       │   │  DP-SGD    │   │ DP-SGD     │
-           │  clip C=1.0   │   │  clip C=1.0│   │ clip C=1.0 │
-           │  + N(0,σ²C²I) │   │  + noise   │   │ + noise    │
-           └───────────────┘   └────────────┘   └────────────┘
-                   ↑ DP-protected pseudo-gradient g̃_k sent to server ↑
+        ┌───────────────────────────────────────────────────────────┐
+        │                     Federated Server                       │
+        │  Adam-style optimizer (adopted: β₁=0.782, β₂=0.961)        │
+        │  m_t = β₁·m_{t-1} + (1−β₁)·ḡ_t     ← low-pass filter      │
+        │  w_{t+1} = w_t − η · m̂_t / (√v̂_t + τ)                    │
+        │  RDP Accountant       → per-client ε audit                 │
+        │  Mamdani fuzzy controller → per-client batch size L (once) │
+        └───┬────────────┬────────────┬────────────┬─────────────────┘
+            │ w_t        │            │            │
+       ┌────▼───────┐┌───▼────────┐┌──▼─────────┐┌─▼──────────────┐
+       │H1 Z-Alizadeh││H2 IEEE-CHD ││H3 UCI      ││H4 sulianova    │
+       │Sani, n=303  ││n=1,190     ││Cleveland,  ││(subsampled),   │
+       │             ││            ││n=920       ││n=1,025         │
+       │Local SGD +  ││Local SGD + ││Local SGD + ││Local SGD +     │
+       │DP-SGD, clip ││DP-SGD, clip││DP-SGD, clip││DP-SGD, clip    │
+       │C=1.0 +      ││C=1.0 +     ││C=1.0 +     ││C=1.0 +         │
+       │N(0,σ²C²I)   ││noise       ││noise       ││noise           │
+       └─────────────┘└────────────┘└────────────┘└────────────────┘
+              ↑ DP-protected pseudo-gradient g̃_k sent to server ↑
 ```
 
 ---
@@ -122,7 +123,7 @@ v̂_t  = v_t / (1 − β₂ᵗ)
 w_{t+1} = w_t − η · m̂_t / (√v̂_t + τ)       # adaptive update
 ```
 
-Default server parameters: η = 0.1, β₁ = 0.9, β₂ = 0.999, τ = 1e-3.
+Constructor defaults (before any Optuna/CLI override): η = 0.1, β₁ = 0.9, β₂ = 0.999, τ = 1e-3. These are generic Adam-style starting values, not the values used to produce any reported result — see "Hyperparameter Reference" below for the two tuned configurations (no-DP and adopted-DP) actually used.
 
 **Variance reduction bound.** Unrolling the recursion under stationarity gives:
 
@@ -130,7 +131,7 @@ Default server parameters: η = 0.1, β₁ = 0.9, β₂ = 0.999, τ = 1e-3.
 Var(m_t) ≤ Var(g_noise) · (1 − β₁) / (1 + β₁)
 ```
 
-At β₁ = 0.9, this is a 19× reduction relative to a stateless aggregator. The bound precedes the measurement and predicts its direction, making the performance advantage mechanistically transparent.
+At the adopted configuration's tuned β₁ = 0.782, this is an 8.2× reduction relative to a stateless aggregator (6.5× at the no-DP-tuned β₁ = 0.733; 19× at the untuned default β₁ = 0.9). The bound precedes the measurement and predicts its direction, making the performance advantage mechanistically transparent.
 
 ### Privacy Budget Accounting
 
@@ -284,20 +285,20 @@ Average of RandomForest/XGBoost/LightGBM/CatBoost, per client (`results/centrali
 
 ### 2. Federated, no DP — cost of federation alone
 
-FedCVR vs. 5 baselines (FedAvg, FedProx, FedCluster, FedAdagrad, FedYogi), macro-averaged across clients, N=10 seeds (`results/statistical_tests_summary.csv`), Welch's t-test on macro AUC vs. FedCVR:
+DP-FedAdam vs. 5 baselines (FedAvg, FedProx, FedCluster, FedAdagrad, FedYogi), macro-averaged across clients, N=10 seeds (`results/statistical_tests_summary.csv`), Welch's t-test on macro AUC vs. DP-FedAdam:
 
-| Strategy | Macro AUC (mean ± std) | Macro F1 (mean ± std) | p vs. FedCVR |
+| Strategy | Macro AUC (mean ± std) | Macro F1 (mean ± std) | p vs. DP-FedAdam |
 |---|---|---|---|
-| FedCVR (ours) | 0.803 ± 0.009 | 0.777 ± 0.015 | — |
+| DP-FedAdam (ours) | 0.803 ± 0.009 | 0.777 ± 0.015 | — |
 | FedAdagrad | 0.810 ± 0.005 | 0.784 ± 0.006 | 0.072 |
 | FedAvg | 0.801 ± 0.003 | 0.773 ± 0.004 | 0.472 |
 | FedProx | 0.801 ± 0.003 | 0.771 ± 0.004 | 0.466 |
 | FedYogi | 0.800 ± 0.012 | 0.775 ± 0.009 | 0.470 |
 | FedCluster | 0.756 ± 0.020 | 0.749 ± 0.015 | **<0.001** |
 
-At N=10 seeds, FedCVR is still **not statistically distinguishable** from FedAvg, FedProx, or FedYogi (all p>0.4) — competitive with, not clearly superior to, standard FedOpt baselines on this benchmark. FedAdagrad's edge tightened toward significance with more seeds (p=0.072, was 0.215 at N=5) but hasn't crossed the 0.05 threshold. FedCVR **is** significantly better than FedCluster, which shows degenerate behavior on some seeds (near-constant-positive predictions, recall≈1.0 with accuracy≈0.6).
+At N=10 seeds, DP-FedAdam is still **not statistically distinguishable** from FedAvg, FedProx, or FedYogi (all p>0.4) — competitive with, not clearly superior to, standard FedOpt baselines on this benchmark. FedAdagrad's edge tightened toward significance with more seeds (p=0.072, was 0.215 at N=5) but hasn't crossed the 0.05 threshold. DP-FedAdam **is** significantly better than FedCluster, which shows degenerate behavior on some seeds (near-constant-positive predictions, recall≈1.0 with accuracy≈0.6).
 
-FedCVR vs. the centralized ceiling, per client (single seed): the federation cost is small and sometimes *negative* (FedCVR AUC beats centralized by +0.019 on H1 and +0.062 on H3; trails by −0.014 to −0.030 on H2/H4).
+DP-FedAdam vs. the centralized ceiling, per client (single seed): the federation cost is small and sometimes *negative* (DP-FedAdam AUC beats centralized by +0.019 on H1 and +0.062 on H3; trails by −0.014 to −0.030 on H2/H4).
 
 A single-seed convergence check (100 vs. 500 rounds) confirmed the model plateaus by round ~20–30 with no further gain (calibrated macro AUC 0.818 at 100 rounds vs. 0.814 at 500) — 100 rounds is sufficient for all reported results.
 
@@ -310,7 +311,7 @@ A single-seed convergence check (100 vs. 500 rounds) confirmed the model plateau
 | σ=1.1 | 0.803 | 0.774 |
 | σ=1.5 | 0.798 | 0.778 |
 
-**Epsilon caveat, resolved 2026-08-14:** an earlier draft's Table 3 claimed ε≈4.8–13.4 for σ=1.1; recomputing against the actual 100-round protocol gives ε≈13.6–91 across clients (fixed batch=32, local_epochs=5). Sweeping the RDP composition over round count shows the original 4.8–13.4 range corresponds almost exactly to ~14 rounds of composition, not 100 — an internal inconsistency in the original draft (the privacy audit was seemingly computed before the 100-round protocol was finalized), not a bug in the current accounting code. See §5 for the resolution.
+**Epsilon caveat, resolved 2026-08-14:** an earlier draft's Table 3 claimed ε≈4.8–13.4 for σ=1.1; recomputing against the actual 100-round protocol gives a per-client range of ε≈13.6–91 at σ=1.1 specifically (fixed batch=32, local_epochs=5; 91 is the worst-case client also reported in the paper's Table 7 sweep). Sweeping the RDP composition over round count shows the original 4.8–13.4 range corresponds almost exactly to ~14 rounds of composition, not 100 — an internal inconsistency in the original draft (the privacy audit was seemingly computed before the 100-round protocol was finalized), not a bug in the current accounting code. Across all three σ settings tested (0.8/1.1/1.5), the paper's Table 7 reports a wider worst-case range of ε≈52–179. See §5 for the resolution (single-digit ε via reduced local computation, not more noise).
 
 ### 4. Fuzzy fairness rebalancing (`experiments/run_dp_sensitivity_fuzzy.py`)
 
@@ -353,22 +354,30 @@ Two things worth disclosing rather than glossing over: (1) both variants' absolu
 
 ## Hyperparameter Reference
 
+Shared / fixed across all configurations:
+
 | Parameter | Description | Value |
 |-----------|-------------|-------|
 | `num_clients` | Participating hospitals | 4 |
 | `communication_rounds` | Benchmark (plateaus by ~round 20-30, no gain past 100 - see Results §2) | 100 |
 | `random_state` | Reproducibility seed | 42 |
-| `local_epochs` | Local epochs per round (5 for the no-DP/fixed-batch benchmark; **1** in the adopted single-digit-epsilon DP configuration - see Results §5) | 5 (1 under adopted DP config) |
 | `local_optimizer` | Client-side optimizer | SGD (no momentum) |
 | `client_lr` | Client learning rate η_c | 0.01 |
-| `batch_size` | Mini-batch size L (Opacus); fuzzy-rebalanced per client under DP (Results §4) | 32 (base) |
 | `clip_norm` C | Per-sample gradient clip norm | 1.0 |
-| `sigma` σ | DP noise multiplier (sensitivity levels tested: 0.8/1.1/1.5; **2.5 adopted** for the single-digit-epsilon configuration) | 2.5 (adopted) |
-| `server_lr` η | Server-side learning rate (Optuna-tuned, `results/best_hyperparameters.json`) | 0.080 |
-| `beta1` β₁ | First moment decay (Optuna-tuned) | 0.733 |
-| `beta2` β₂ | Second moment decay (Optuna-tuned) | 0.910 |
-| `tau` τ | Numerical stability constant (Optuna-tuned) | 0.00178 |
 | `delta` δ | DP delta | 1e-5 |
+
+Server-side optimizer hyperparameters are Optuna-tuned **separately** for two regimes, because hyperparameters tuned without DP noise in the loop are not necessarily right once real per-step Gaussian noise is present (Results §6). Every headline result in the paper (§5, §6, and the abstract's 8.2× variance reduction / ε 8.82→6.60 / AUC 0.764→0.776) uses the **adopted-DP** column, not the no-DP column below.
+
+| Parameter | No-DP-tuned (`best_hyperparameters.json`) | Adopted-DP-tuned (`best_hyperparameters_dp.json`) |
+|-----------|:---:|:---:|
+| `local_epochs` | 5 | **1** |
+| `sigma` σ | — (no DP) | **2.5** |
+| `batch_size` L | 32 (base; used as-is) | 32 base, fuzzy-rebalanced per client (Results §4) |
+| `server_lr` η | 0.080 | **0.168** |
+| `beta1` β₁ | 0.733 | **0.782** |
+| `beta2` β₂ | 0.910 | **0.961** |
+| `tau` τ | 0.00178 | **0.00128** |
+| Used in | §1–§3, and §5's "no-DP ceiling" reference points | §5 (single-digit-ε feasibility) and §6 (N=10 fixed-vs-fuzzy validation) |
 
 ---
 
