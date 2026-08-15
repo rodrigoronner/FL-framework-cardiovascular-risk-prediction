@@ -1,35 +1,16 @@
 """
 experiments/run_comparison.py
 =============================
-Investigation 1 - Performance comparison across FL strategies.
-
-Reproduces the paper's Table benchmark: six strategies over 100 federated
-rounds, all under the *same* client-side DP-SGD configuration
-(sigma=1.1, C=1.0), so that observed differences are attributable solely to
-server-side aggregation design ("For each method, the same client-side
-DP-SGD configuration is applied" - Section "Competing Methods"):
-    - FedAvg              (mu=0,    plain weighted-average server)
-    - FedProx (mu=0.01)    (proximal client, plain weighted-average server)
-    - FedCluster (k=2)     (plain FedAvg run independently per client cluster)
-    - FedAdagrad           (second-moment-only adaptive server optimizer)
-    - FedYogi              (sign-based second-moment adaptive server optimizer)
-    - FedCVR (ours)        (mu=0, DP-FedAdam server optimizer - Algorithm 1)
-
-The no-DP vs. DP privacy-utility trade-off for the proposed method alone is
-covered separately by ``run_dp_sensitivity.py`` (Investigation 3).
-
-Outputs
--------
-  results/comparison_metrics.csv   - round-level metrics for all strategies
-  results/comparison_plot.png      - 2x2 metric comparison figure
+Benchmark comparison across 6 FL strategies (FedAvg, FedProx, FedCluster,
+FedAdagrad, FedYogi, FedCVR), all under the same client-side configuration
+so differences are attributable to server-side aggregation design alone.
+Pass --no_dp for the no-privacy stage. See run_dp_sensitivity.py /
+run_dp_sensitivity_fuzzy.py / run_privacy_budget_test.py for the DP-only
+privacy-utility analyses.
 
 Usage
 -----
-    # From the repository root:
     python -m experiments.run_comparison --data_dir ./data --rounds 100
-
-    # Or, specifying an output directory:
-    python -m experiments.run_comparison --data_dir /path/to/csvs --out_dir ./results
 """
 
 from __future__ import annotations
@@ -42,6 +23,9 @@ import warnings
 from typing import Dict, Optional
 
 import flwr as fl
+import matplotlib
+matplotlib.use("Agg")  # non-interactive backend; the native macOS backend's
+                        # plt.show() blocks forever with no display attached.
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import pandas as pd
@@ -51,6 +35,8 @@ warnings.filterwarnings("ignore")
 # Allow running as a script from the repo root
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from flwr.common import parameters_to_ndarrays
+
 from fedcvr.baselines import FedAdagradStrategy, FedClusterStrategy, FedYogiStrategy
 from fedcvr.client import build_client
 from fedcvr.data_utils import (
@@ -58,6 +44,7 @@ from fedcvr.data_utils import (
     cluster_clients_by_distribution,
     load_and_preprocess_data,
 )
+from fedcvr.evaluation import calibrated_final_evaluation
 from fedcvr.strategy import FedCVRStrategy
 
 
@@ -65,8 +52,7 @@ from fedcvr.strategy import FedCVRStrategy
 # Experiment configuration
 # ---------------------------------------------------------------------------
 
-# Shared DP-SGD configuration applied identically to every method (sigma=1.1,
-# C=1.0), matching Table benchmark's caption in the paper.
+# Shared DP-SGD configuration applied identically to every method.
 DP_CONFIG: Dict = {"noise_multiplier": 1.1, "max_grad_norm": 1.0}
 
 SCENARIOS: Dict[str, Dict] = {
@@ -124,16 +110,27 @@ def run(
     num_rounds: int = 100,
     out_dir: str = "results",
     hyperparams_path: Optional[str] = None,
+    seed: int = 42,
+    use_dp: bool = True,
 ) -> None:
     os.makedirs(out_dir, exist_ok=True)
 
+    # Seed training-time stochasticity only; the data split stays fixed
+    # at load_and_preprocess_data's own random_state=42 regardless of seed.
+    import numpy as _np
+    import torch as _torch
+    _np.random.seed(seed)
+    _torch.manual_seed(seed)
+
     # Load datasets
-    client_train_data, _client_val_data, client_test_data, dataset_names = load_and_preprocess_data(
+    client_train_data, client_val_data, client_test_data, dataset_names = load_and_preprocess_data(
         data_dir=data_dir
     )
     if client_train_data is None:
         print("ERROR: Could not load datasets. Aborting.")
         sys.exit(1)
+
+    print(f"DP-SGD: {'ENABLED (sigma=' + str(DP_CONFIG['noise_multiplier']) + ')' if use_dp else 'DISABLED (plain FL, no privacy noise)'}")
 
     if hyperparams_path is not None:
         with open(hyperparams_path) as f:
@@ -147,10 +144,12 @@ def run(
         print(f"Loaded Optuna-tuned hyperparameters from {hyperparams_path}: {tuned}")
 
     num_clients = len(client_train_data)
+    input_features = client_train_data[0][0].shape[1]
     cluster_assignment = cluster_clients_by_distribution(
         client_train_data, n_clusters=2, random_state=42
     )
     history_storage: Dict[str, fl.server.history.History] = {}
+    calibrated_results: Dict[str, Dict] = {}
 
     def make_client_fn():
         def client_fn(cid: str) -> fl.client.Client:
@@ -159,8 +158,8 @@ def run(
                 client_train_data=client_train_data,
                 client_test_data=client_test_data,
                 local_epochs=5,
-                use_dp=True,
-                dp_config=DP_CONFIG,
+                use_dp=use_dp,
+                dp_config=DP_CONFIG if use_dp else None,
             ).to_client()
         return client_fn
 
@@ -192,6 +191,30 @@ def run(
             client_resources={"num_cpus": 1, "num_gpus": 0.0},
         )
         history_storage[name] = history
+
+        final_ndarrays = parameters_to_ndarrays(strategy.final_weights)
+        calibrated_results[name] = calibrated_final_evaluation(
+            final_ndarrays=final_ndarrays,
+            input_features=input_features,
+            client_val_data=client_val_data,
+            client_test_data=client_test_data,
+            client_names=dataset_names,
+        )
+        macro = calibrated_results[name]["macro"]
+        macro_local = calibrated_results[name]["macro_local_threshold"]
+        pooled = calibrated_results[name]["pooled"]
+        print(
+            f"  Macro, global threshold  : acc={macro['accuracy']:.3f} prec={macro['precision']:.3f} "
+            f"rec={macro['recall']:.3f} f1={macro['f1_score']:.3f} auc={macro['auc']:.3f}"
+        )
+        print(
+            f"  Macro, local threshold   : acc={macro_local['accuracy']:.3f} prec={macro_local['precision']:.3f} "
+            f"rec={macro_local['recall']:.3f} f1={macro_local['f1_score']:.3f} auc={macro_local['auc']:.3f}"
+        )
+        print(
+            f"  Pooled (secondary)       : acc={pooled['accuracy']:.3f} prec={pooled['precision']:.3f} "
+            f"rec={pooled['recall']:.3f} f1={pooled['f1_score']:.3f} auc={pooled['auc']:.3f}"
+        )
         print(f"  Finished: {name}")
 
     # -------------------------------------------------------------------
@@ -208,6 +231,34 @@ def run(
     csv_path = os.path.join(out_dir, "comparison_metrics.csv")
     df.to_csv(csv_path, index=False)
     print(f"\nMetrics saved to: {csv_path}")
+
+    # -------------------------------------------------------------------
+    # Save final, threshold-calibrated metrics (the paper's benchmark table)
+    # -------------------------------------------------------------------
+    flat_rows = []
+    per_client_rows = []
+    for name, result in calibrated_results.items():
+        flat_row = {"strategy": name}
+        flat_row.update({f"macro_{k}": v for k, v in result["macro"].items()})
+        flat_row.update({f"macro_local_{k}": v for k, v in result["macro_local_threshold"].items()})
+        flat_row.update({f"pooled_{k}": v for k, v in result["pooled"].items()})
+        flat_rows.append(flat_row)
+
+        for client_label, views in result["per_client"].items():
+            row = {"strategy": name, "client": client_label}
+            row.update({f"global_{k}": v for k, v in views["global_threshold"].items()})
+            row.update({f"local_{k}": v for k, v in views["local_threshold"].items()})
+            per_client_rows.append(row)
+
+    calibrated_df = pd.DataFrame(flat_rows)
+    calibrated_csv_path = os.path.join(out_dir, "calibrated_final_metrics.csv")
+    calibrated_df.to_csv(calibrated_csv_path, index=False)
+    print(f"Calibrated final metrics (macro + pooled) saved to: {calibrated_csv_path}")
+
+    per_client_df = pd.DataFrame(per_client_rows)
+    per_client_csv_path = os.path.join(out_dir, "calibrated_per_client_metrics.csv")
+    per_client_df.to_csv(per_client_csv_path, index=False)
+    print(f"Per-client calibrated metrics saved to: {per_client_csv_path}")
 
     # -------------------------------------------------------------------
     # Plot 2×2 figure
@@ -241,14 +292,15 @@ def run(
     for ax in axes[2:]:
         ax.set_xlabel("Federated Round", fontsize=11)
 
+    dp_label = f"Under DP (σ={DP_CONFIG['noise_multiplier']})" if use_dp else "No DP (plain FL)"
     fig.suptitle(
-        "FedCVR vs. Baselines – Performance Comparison Under DP (σ=1.1, 100 rounds, 5 clients)",
+        f"FedCVR vs. Baselines – Performance Comparison {dp_label}, {num_rounds} rounds, {num_clients} clients",
         fontsize=15,
     )
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plot_path = os.path.join(out_dir, "comparison_plot.png")
     plt.savefig(plot_path, dpi=150, bbox_inches="tight")
-    plt.show()
+    plt.close(fig)
     print(f"Plot saved to: {plot_path}")
 
 
@@ -268,6 +320,14 @@ if __name__ == "__main__":
                         help="Path to best_hyperparameters.json produced by "
                              "experiments/run_hpo.py; overrides the proposed "
                              "method's eta/beta_1/beta_2/tau if given.")
+    parser.add_argument("--seed", type=int, default=42,
+                        help="Seed for training-time stochasticity (model init, "
+                             "DP noise, client sampling); the data split stays "
+                             "fixed at random_state=42 regardless of this value.")
+    parser.add_argument("--no_dp", action="store_true",
+                        help="Disable DP-SGD (plain FL, no privacy noise) - for "
+                             "comparing federated-without-DP against the "
+                             "centralized baseline before introducing privacy noise.")
     args = parser.parse_args()
 
     run(
@@ -275,4 +335,6 @@ if __name__ == "__main__":
         num_rounds=args.rounds,
         out_dir=args.out_dir,
         hyperparams_path=args.hyperparams,
+        seed=args.seed,
+        use_dp=not args.no_dp,
     )

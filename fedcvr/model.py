@@ -1,19 +1,8 @@
 """
-model.py - Deep Neural Network for cardiovascular risk binary classification.
-
-Architecture
-------------
-Input(6)  ->  Linear(6, 64)  ->  ReLU
-          ->  Linear(64, 32) ->  ReLU
-          ->  Linear(32, 1)  ->  Sigmoid
-
-The model returns calibrated probabilities P(Y=1|x) in [0, 1].
-Paired with ``torch.nn.BCELoss`` during training.
-
-The six harmonized input features are:
-    age, sex, systolic BP (trestbps), diastolic BP (diaBP),
-    cholesterol (chol), fasting blood glucose (fbs).
-
+model.py - DNN for cardiovascular risk binary classification.
+Input(input_features) -> Linear(64) -> ReLU -> Linear(32) -> ReLU ->
+Linear(1) -> Sigmoid. Returns calibrated P(Y=1|x) in [0, 1], paired with
+``torch.nn.BCELoss``. See README "Datasets" for the input feature set.
 """
 
 import torch
@@ -21,16 +10,7 @@ import torch.nn as nn
 
 
 class Net(nn.Module):
-    """Three-layer DNN for cardiovascular risk binary classification.
-
-
-    Parameters
-    ----------
-    input_features : int
-        Number of input features. Defaults to 6, corresponding to the
-        Harmonized cardiovascular feature set used in this project:
-        age, sex, systolic BP, diastolic BP, cholesterol, and fasting blood glucose.
-    """
+    """Three-layer DNN for cardiovascular risk binary classification."""
 
     def __init__(self, input_features: int = 6) -> None:
         super().__init__()

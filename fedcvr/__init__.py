@@ -1,16 +1,9 @@
 """
 FedCVR - Federated Cardiovascular Risk Prediction
-==================================================
-A privacy-preserving federated learning framework combining:
-  - Client-side Differential Privacy (Opacus / Gaussian mechanism, DP-SGD)
-  - Adaptive server-side moment estimation (DP-FedAdam, eta=0.1, tau=1e-3)
-  - Per-client RDP accounting for fairness auditing
-  - Baselines for benchmarking (FedProx, FedCluster, FedAdagrad, FedYogi)
 
-Paper: "Interpretable Differentially Private Federated Learning for
-        Cardiovascular Risk Prediction: Mechanistic Transparency and
-        Fairness Auditing"
-        Engineering Applications of Artificial Intelligence (submitted)
+Privacy-preserving federated learning: client-side DP-SGD (Opacus),
+server-side DP-FedAdam, per-client RDP accounting, fuzzy fairness
+rebalancing, and FedProx/FedCluster/FedAdagrad/FedYogi baselines.
 """
 
 from .model import Net
@@ -22,7 +15,8 @@ from .data_utils import (
     aggregate_metrics_fn,
     cluster_clients_by_distribution,
 )
-from .rdp_accountant import RDPAccountant, audit_paper_scenario
+from .rdp_accountant import RDPAccountant
+from .fuzzy_fairness import FuzzyFairnessController
 
 __all__ = [
     "Net",
@@ -36,5 +30,5 @@ __all__ = [
     "aggregate_metrics_fn",
     "cluster_clients_by_distribution",
     "RDPAccountant",
-    "audit_paper_scenario",
+    "FuzzyFairnessController",
 ]

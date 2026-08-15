@@ -1,9 +1,11 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
+.venv
 .venv/
 venv/
 .ipynb_checkpoints/
 results/
 data/*.csv
 .DS_Store
+catboost_info/

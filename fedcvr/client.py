@@ -1,24 +1,7 @@
 """
-client.py - FedCVR Flower client.
-
-Each client trains a local DNN with:
-  1. FedProx proximal regularisation  - penalizes deviation from the global
-     model, helping to tame client drift under non-IID data (mu parameter).
-  2. Differential Privacy via Opacus  - per-sample gradient clipping and
-     calibrated Gaussian noise injection before the update is transmitted.
-     When ``use_dp=False`` the client behaves as a standard FedProx client.
-
-The local optimizer is vanilla SGD (no client-side momentum). All adaptive
-smoothing is delegated to the DP-FedAdam server-side optimizer (strategy.py),
-which acts as a temporal low-pass filter on the zero-mean Gaussian DP noise
-injected by Opacus. Client-side momentum is intentionally disabled so that
-the denoising effect can be attributed unambiguously to the server Adam step.
-
-The loss function is Binary Cross-Entropy (BCELoss). The model's forward
-pass applies a sigmoid activation so outputs are calibrated probabilities
-in [0, 1], and BCELoss operates directly on those probabilities.
-
-The client extends ``fl.client.NumPyClient`` for seamless integration with Flower.
+client.py - FedCVR Flower client. Local DNN trained with FedProx proximal
+regularisation (mu) and optional client-side DP (Opacus DP-SGD). Vanilla
+SGD, no client-side momentum - see README "Client Update" for why.
 """
 
 from __future__ import annotations
@@ -73,13 +56,8 @@ class FedCVRClient(NumPyClient):
         self.local_epochs = local_epochs
         self.use_dp = use_dp
 
-        # Vanilla SGD: no client-side momentum (momentum=0 is the default).
-        # Adaptive smoothing is handled exclusively by the server-side
-        # DP-FedAdam optimizer in strategy.py.
+        # Vanilla SGD, no client-side momentum - see README "Client Update".
         self.optimizer = optim.SGD(self.model.parameters(), lr=0.01)
-
-        # Binary Cross-Entropy loss. The model already applies sigmoid, so
-        # outputs are probabilities in [0, 1].
         self.criterion = nn.BCELoss()
 
         if self.use_dp:
@@ -219,10 +197,6 @@ def build_client(
             shuffle=shuffle,
         )
 
-    # Batch size is fixed at `batch_size` (paper default L=32) regardless of
-    # whether DP is active, so that the sampling rate q = L / n_train used by
-    # the RDP accountant (fedcvr.rdp_accountant) matches the batch size
-    # Opacus actually trains with.
     train_loader = _to_loader(X_train, y_train, shuffle=True)
     test_loader = _to_loader(X_test, y_test)
 

@@ -1,11 +1,9 @@
 """
 data/convert_cleveland.py
 =========================
-Converts UCI Heart Disease raw data file(s) to a clean CSV consumable by
-FedCVR's data pipeline (H3 client). The paper's reported H3 sample count
-(920) is the four UCI sites combined - Cleveland (303) + Hungarian (294)
-+ Switzerland (123) + Long Beach VA (200) - not Cleveland alone (303), so
-by default this script concatenates all four ``processed.*.data`` files.
+Converts UCI Heart Disease raw data file(s) to a clean CSV (H3 client).
+By default concatenates all four UCI sites (Cleveland + Hungarian +
+Switzerland + Long Beach VA, 920 rows total).
 
 Usage
 -----

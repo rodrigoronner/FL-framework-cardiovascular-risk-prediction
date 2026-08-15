@@ -1,14 +1,17 @@
 """
-experiments/run_dp_sensitivity.py
-==================================
-Privacy-utility trade-off of FedCVR across four DP regimes: No DP,
-Low (sigma=0.8), Medium (sigma=1.1), High (sigma=1.5) - fixed batch
-size L=32 for every client. See run_privacy_budget_test.py for the
-single-digit-epsilon configuration ultimately adopted.
+experiments/run_privacy_budget_test.py
+=======================================
+Fixed-batch (L=32 for every client) reference run at the adopted
+single-digit-epsilon DP configuration: sigma=2.5, local_epochs=1, at the
+full 100-round protocol. Serves as the fixed-batch baseline for the
+fuzzy-vs-fixed comparison in run_dp_sensitivity_fuzzy.py. See README
+"Privacy Budget Accounting" and Results §5 for how this configuration
+was chosen.
 
 Usage
 -----
-    python -m experiments.run_dp_sensitivity --data_dir ./data --rounds 100
+    python -m experiments.run_privacy_budget_test --data_dir ./data --rounds 100 \
+        --hyperparams results/best_hyperparameters.json --seed 42
 """
 
 from __future__ import annotations
@@ -22,6 +25,7 @@ from typing import Dict, Optional
 
 import flwr as fl
 import matplotlib
+
 matplotlib.use("Agg")  # non-interactive backend - see run_comparison.py for why
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
@@ -34,43 +38,31 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from flwr.common import parameters_to_ndarrays
 
 from fedcvr.client import build_client
-from fedcvr.data_utils import aggregate_metrics_fn, load_and_preprocess_data
+from fedcvr.data_utils import aggregate_metrics_fn, get_pre_smote_train_sizes, load_and_preprocess_data
 from fedcvr.evaluation import calibrated_final_evaluation
+from fedcvr.rdp_accountant import RDPAccountant
 from fedcvr.strategy import FedCVRStrategy
 
-
-# ---------------------------------------------------------------------------
-# DP scenario configuration
-# ---------------------------------------------------------------------------
-
-MU = 0.0         # no proximal term (Algorithm 2): the proposed method differs
-                 # from FedAvg only via the server-side Adam optimizer and DP-SGD
+MU = 0.0
 DEFAULT_SERVER_KWARGS: Dict = {
     "eta": 0.1, "beta_1": 0.9, "beta_2": 0.999, "tau": 1e-3,
-}  # server Adam hyperparameters as reported in the paper; overridden by
-   # --hyperparams if an Optuna run_hpo.py output is supplied.
+}
+BATCH_SIZE = 32
+DELTA = 1e-5
 
-DP_SCENARIOS: Dict[str, Optional[Dict]] = {
-    "No DP (Baseline)": None,
-    "Low Privacy  (σ=0.8)":    {"noise_multiplier": 0.8,  "max_grad_norm": 1.0},
-    "Medium Privacy (σ=1.1)":  {"noise_multiplier": 1.1,  "max_grad_norm": 1.0},
-    "High Privacy (σ=1.5)":    {"noise_multiplier": 1.5,  "max_grad_norm": 1.0},
+# Adopted single-digit-epsilon configuration (see module docstring for how
+# this was chosen over the "high sigma, epochs=5" alternative).
+SCENARIOS: Dict[str, Dict] = {
+    "Adopted DP config (σ=2.5, epochs=1, fixed batch)": {"noise_multiplier": 2.5, "local_epochs": 1},
 }
 
 LINE_STYLES = {
-    "No DP (Baseline)":       ("-",  "tab:blue"),
-    "Low Privacy  (σ=0.8)":   ("--", "tab:orange"),
-    "Medium Privacy (σ=1.1)": (":",  "tab:green"),
-    "High Privacy (σ=1.5)":   ("-.", "tab:red"),
+    "Adopted DP config (σ=2.5, epochs=1, fixed batch)": ("-.", "tab:brown"),
 }
 
 
-# ---------------------------------------------------------------------------
-# Main simulation runner
-# ---------------------------------------------------------------------------
-
 def run(
-    data_dir: str = ".",
+    data_dir: str = "data",
     num_rounds: int = 100,
     out_dir: str = "results",
     hyperparams_path: Optional[str] = None,
@@ -83,10 +75,16 @@ def run(
     _np.random.seed(seed)
     _torch.manual_seed(seed)
 
-    client_train_data, client_val_data, client_test_data, dataset_names = load_and_preprocess_data(data_dir=data_dir)
+    client_train_data, client_val_data, client_test_data, dataset_names = load_and_preprocess_data(
+        data_dir=data_dir
+    )
     if client_train_data is None:
         print("ERROR: Could not load datasets. Aborting.")
         sys.exit(1)
+
+    client_labels = [f"H{i+1}" for i in range(len(dataset_names))]
+    n_train_per_client = get_pre_smote_train_sizes(data_dir=data_dir)
+    print(f"Pre-SMOTE training-fold sizes: {dict(zip(client_labels, n_train_per_client))}")
 
     server_kwargs = dict(DEFAULT_SERVER_KWARGS)
     if hyperparams_path is not None:
@@ -99,21 +97,38 @@ def run(
     input_features = client_train_data[0][0].shape[1]
     history_storage: Dict[str, fl.server.history.History] = {}
     calibrated_results: Dict[str, Dict] = {}
+    epsilon_reports: Dict[str, Dict[str, float]] = {}
 
-    for name, dp_cfg in DP_SCENARIOS.items():
-        print(f"\n{'='*60}")
-        print(f"  Running: {name}")
-        print(f"{'='*60}")
+    for name, cfg in SCENARIOS.items():
+        sigma = cfg["noise_multiplier"]
+        local_epochs = cfg["local_epochs"]
+        print(f"\n{'='*60}\n  Running: {name}\n{'='*60}")
 
-        def make_client_fn(dp_config):
+        # Confirm the actual per-client epsilon for this config before
+        # spending compute on training - the whole point of this script.
+        accountant = RDPAccountant(
+            noise_multiplier=sigma, max_grad_norm=1.0, batch_size=BATCH_SIZE, delta=DELTA
+        )
+        eps_per_client = {
+            label: accountant.compute_epsilon(n_train, num_rounds, local_epochs)
+            for label, n_train in zip(client_labels, n_train_per_client)
+        }
+        epsilon_reports[name] = eps_per_client
+        for label, eps in eps_per_client.items():
+            print(f"    {label}: epsilon={eps:.2f}")
+
+        dp_config = {"noise_multiplier": sigma, "max_grad_norm": 1.0}
+
+        def make_client_fn(dp_cfg, epochs):
             def client_fn(cid: str) -> fl.client.Client:
                 return build_client(
                     cid=cid,
                     client_train_data=client_train_data,
                     client_test_data=client_test_data,
-                    local_epochs=5,
-                    use_dp=dp_config is not None,
-                    dp_config=dp_config,
+                    batch_size=BATCH_SIZE,
+                    local_epochs=epochs,
+                    use_dp=True,
+                    dp_config=dp_cfg,
                 ).to_client()
             return client_fn
 
@@ -125,11 +140,11 @@ def run(
             min_evaluate_clients=num_clients,
             min_available_clients=num_clients,
             evaluate_metrics_aggregation_fn=aggregate_metrics_fn,
-            on_fit_config_fn=lambda _: {"mu": MU},
+            on_fit_config_fn=lambda _round: {"mu": MU},
         )
 
         history = fl.simulation.start_simulation(
-            client_fn=make_client_fn(dp_cfg),
+            client_fn=make_client_fn(dp_config, local_epochs),
             num_clients=num_clients,
             config=fl.server.ServerConfig(num_rounds=num_rounds),
             strategy=strategy,
@@ -153,21 +168,7 @@ def run(
         print(f"  Finished: {name}")
 
     # -------------------------------------------------------------------
-    # Save to CSV
-    # -------------------------------------------------------------------
-    rows = []
-    for name, hist in history_storage.items():
-        for metric in ["accuracy", "precision", "recall", "f1_score"]:
-            for rnd, val in hist.metrics_distributed.get(metric, []):
-                rows.append({"scenario": name, "round": rnd, "metric": metric, "value": val})
-
-    df = pd.DataFrame(rows)
-    csv_path = os.path.join(out_dir, "dp_sensitivity_metrics.csv")
-    df.to_csv(csv_path, index=False)
-    print(f"\nMetrics saved to: {csv_path}")
-
-    # -------------------------------------------------------------------
-    # Save final, threshold-calibrated metrics (the paper's privacy-utility table)
+    # Save calibrated utility metrics
     # -------------------------------------------------------------------
     flat_rows = []
     per_client_rows = []
@@ -183,78 +184,71 @@ def run(
             row.update({f"local_{k}": v for k, v in views["local_threshold"].items()})
             per_client_rows.append(row)
 
-    calibrated_csv_path = os.path.join(out_dir, "calibrated_dp_sensitivity_metrics.csv")
+    calibrated_csv_path = os.path.join(out_dir, "calibrated_privacy_budget_metrics.csv")
     pd.DataFrame(flat_rows).to_csv(calibrated_csv_path, index=False)
-    print(f"Calibrated final metrics (macro + pooled) saved to: {calibrated_csv_path}")
+    print(f"\nCalibrated final metrics saved to: {calibrated_csv_path}")
 
-    per_client_csv_path = os.path.join(out_dir, "calibrated_dp_sensitivity_per_client.csv")
+    per_client_csv_path = os.path.join(out_dir, "calibrated_privacy_budget_per_client.csv")
     pd.DataFrame(per_client_rows).to_csv(per_client_csv_path, index=False)
     print(f"Per-client calibrated metrics saved to: {per_client_csv_path}")
 
+    eps_rows = []
+    for name, eps_per_client in epsilon_reports.items():
+        for label, eps in eps_per_client.items():
+            eps_rows.append({"scenario": name, "client": label, "epsilon": eps})
+    eps_csv_path = os.path.join(out_dir, "privacy_budget_epsilon.csv")
+    pd.DataFrame(eps_rows).to_csv(eps_csv_path, index=False)
+    print(f"Epsilon report saved to: {eps_csv_path}")
+
     # -------------------------------------------------------------------
-    # 2×2 privacy-utility plot
+    # Round-level metrics + plot
     # -------------------------------------------------------------------
+    rows = []
+    for name, hist in history_storage.items():
+        for metric in ["accuracy", "precision", "recall", "f1_score"]:
+            for rnd, val in hist.metrics_distributed.get(metric, []):
+                rows.append({"scenario": name, "round": rnd, "metric": metric, "value": val})
+    pd.DataFrame(rows).to_csv(os.path.join(out_dir, "privacy_budget_round_metrics.csv"), index=False)
+
     metrics_to_plot = ["accuracy", "precision", "recall", "f1_score"]
     fig, axes = plt.subplots(2, 2, figsize=(16, 10), sharex=True)
     axes = axes.flatten()
-
     for ax, metric in zip(axes, metrics_to_plot):
-        for name, hist in history_storage.items():
+        for name in SCENARIOS:
+            hist = history_storage[name]
             data = hist.metrics_distributed.get(metric, [])
             if data:
                 rounds, values = zip(*data)
                 ls, col = LINE_STYLES[name]
-                ax.plot(
-                    rounds, values,
-                    label=name,
-                    linestyle=ls,
-                    color=col,
-                    marker=".",
-                    markersize=4,
-                    alpha=0.9,
-                )
+                ax.plot(rounds, values, label=name, linestyle=ls, color=col, marker=".", markersize=4, alpha=0.9)
         ax.set_title(metric.replace("_", " ").capitalize(), fontsize=13)
         ax.set_ylabel("Metric Value")
         ax.set_ylim(0.0, 1.0)
         ax.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=1.0, decimals=0))
         ax.grid(True, linestyle="--", alpha=0.6)
         ax.legend(fontsize=9)
-
     for ax in axes[2:]:
         ax.set_xlabel("Federated Round", fontsize=11)
-
     fig.suptitle(
-        "FedCVR – Privacy-Utility Trade-off Analysis (DP Sensitivity)",
+        f"FedCVR - Single-Digit-Epsilon Privacy Budget Test, {num_rounds} rounds, {num_clients} clients",
         fontsize=15,
     )
     plt.tight_layout(rect=[0, 0, 1, 0.96])
-    plot_path = os.path.join(out_dir, "dp_sensitivity_plot.png")
+    plot_path = os.path.join(out_dir, "privacy_budget_plot.png")
     plt.savefig(plot_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"Plot saved to: {plot_path}")
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="FedCVR – Investigation 3: DP sensitivity analysis"
+        description="FedCVR - test whether single-digit epsilon is reachable at the full 100-round protocol"
     )
-    parser.add_argument("--data_dir", type=str, default="data",
-                        help="Directory containing the four CSV dataset files.")
-    parser.add_argument("--rounds", type=int, default=100,
-                        help="Number of federated communication rounds.")
-    parser.add_argument("--out_dir", type=str, default="results",
-                        help="Directory to save metrics CSV and plot PNG.")
-    parser.add_argument("--hyperparams", type=str, default=None,
-                        help="Path to best_hyperparameters.json produced by "
-                             "experiments/run_hpo.py; overrides the server-side "
-                             "eta/beta_1/beta_2/tau if given.")
-    parser.add_argument("--seed", type=int, default=42,
-                        help="Seed for training-time stochasticity; the data "
-                             "split stays fixed at random_state=42 regardless.")
+    parser.add_argument("--data_dir", type=str, default="data")
+    parser.add_argument("--rounds", type=int, default=100)
+    parser.add_argument("--out_dir", type=str, default="results")
+    parser.add_argument("--hyperparams", type=str, default=None)
+    parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
     run(

@@ -1,52 +1,15 @@
 """
 rdp_accountant.py - Per-client Renyi Differential Privacy (RDP) accounting.
-
-Implements the RDP accountant described in Section 3.3 of the paper:
-"Interpretable Differentially Private Federated Learning for Cardiovascular
-Risk Prediction: Mechanistic Transparency and Fairness Auditing."
-
-Background
-----------
-Opacus internally uses RDP accounting (Mironov, 2017) to track privacy
-expenditure. This module wraps Opacus's accounting utilities to expose
-per-client effective epsilon values at a given delta, enabling the fairness
-audit described in Section 4.4 of the paper.
-
-The effective epsilon per client depends on:
-  - noise_multiplier (sigma): higher sigma -> lower epsilon (stronger privacy)
-  - n_train: number of training samples per client; smaller datasets require
-    more passes over the data per epoch, which amplifies the privacy cost
-  - batch_size: affects the sampling rate q = batch_size / n_train
-  - n_rounds * local_epochs: total number of gradient steps
-  - delta: target failure probability (set to 1e-5 in the paper)
-
-Per-client epsilon spread
--------------------------
-The paper reports a 2.8x spread in effective epsilon across the five
-hospital clients (H1-H5), driven by dataset-size imbalance:
-  n_train ranges from 644 (H3, UCI Cleveland) to 2,967 (H1, Framingham).
-Smaller datasets yield higher effective epsilon (weaker privacy guarantees)
-because the same number of gradient steps corresponds to more epochs and a
-higher sampling rate relative to the dataset size.
+Wraps Opacus's RDP accounting utilities to expose per-client effective
+epsilon at a given delta, given (noise_multiplier, batch_size, n_train,
+n_rounds, local_epochs, delta). See README "Privacy Budget Accounting".
 
 Usage
 -----
     from fedcvr.rdp_accountant import RDPAccountant
 
-    accountant = RDPAccountant(
-        noise_multiplier=1.1,
-        max_grad_norm=1.0,
-        batch_size=32,
-        delta=1e-5,
-    )
-
-    # Compute effective epsilon after T rounds x E local epochs per client
-    eps = accountant.compute_epsilon(
-        n_train=2967,     # H1 - Framingham training samples
-        n_rounds=100,
-        local_epochs=5,
-    )
-    print(f"H1 effective epsilon: {eps:.2f}")
+    accountant = RDPAccountant(noise_multiplier=1.1, max_grad_norm=1.0, batch_size=32, delta=1e-5)
+    eps = accountant.compute_epsilon(n_train=211, n_rounds=100, local_epochs=5)
 """
 
 from __future__ import annotations
@@ -91,37 +54,9 @@ class RDPAccountant:
         n_rounds: int,
         local_epochs: int = 5,
     ) -> float:
-        """Compute the effective (epsilon, delta)-DP guarantee for one client.
-
-        Uses Opacus's ``privacy_analysis`` module (PRV accountant under the
-        hood) to convert RDP curves to (eps, delta)-DP.
-
-        Parameters
-        ----------
-        n_train : int
-            Number of *original* (pre-SMOTE) training samples for this
-            client. Per the paper's accounting convention, synthetic SMOTE
-            records do not contribute to the privacy amplification
-            calculation, so the sampling rate q = batch_size / n_train and
-            the resulting epsilon are always computed from the original
-            training-set size, even when the client trains over the
-            SMOTE-augmented set. See ``audit_paper_scenario`` below, which
-            reproduces the paper's Table with these pre-SMOTE sizes.
-        n_rounds : int
-            Total number of federated communication rounds.
-        local_epochs : int
-            Number of local SGD epochs per federated round.
-
-        Returns
-        -------
-        float
-            Effective epsilon at the configured delta.
-
-        Raises
-        ------
-        ImportError
-            If Opacus is not installed.
-        """
+        """Effective (epsilon, delta)-DP guarantee for one client, over
+        n_rounds x local_epochs steps. n_train must be the pre-SMOTE
+        sample count (see fedcvr.data_utils.get_pre_smote_train_sizes)."""
         try:
             from opacus.accountants.utils import get_noise_multiplier
             from opacus.accountants import RDPAccountant as OpacusRDP
@@ -131,10 +66,7 @@ class RDPAccountant:
                 "Install with: pip install opacus"
             )
 
-        # Sampling rate: fraction of dataset per mini-batch
         sample_rate = self.batch_size / n_train
-
-        # Total number of gradient steps = rounds x local_epochs x steps_per_epoch
         steps_per_epoch = int(np.ceil(n_train / self.batch_size))
         total_steps = n_rounds * local_epochs * steps_per_epoch
 
@@ -156,7 +88,7 @@ class RDPAccountant:
         Parameters
         ----------
         n_train_per_client : list of int
-            Training set sizes for each client (H1 through H5).
+            Training set sizes for each client.
         n_rounds : int
             Total number of federated communication rounds.
         local_epochs : int
@@ -194,52 +126,3 @@ class RDPAccountant:
             "epsilon (weaker privacy guarantee).\n"
         )
         return results
-
-
-# ---------------------------------------------------------------------------
-# Convenience function for quick audits
-# ---------------------------------------------------------------------------
-
-def audit_paper_scenario(n_rounds: int = 100, local_epochs: int = 5) -> Dict[str, float]:
-    """Reproduce the per-client epsilon audit from Table 4 of the paper.
-
-    Uses the training set sizes reported in the paper for the five hospital
-    clients (H1-H5) under the FedCVR+DP configuration (sigma=1.1, delta=1e-5).
-
-    Parameters
-    ----------
-    n_rounds : int
-        Number of federated rounds (default 100, as used in the paper).
-    local_epochs : int
-        Local SGD epochs per round (default 5, as used in the paper).
-
-    Returns
-    -------
-    dict mapping client label -> effective epsilon
-    """
-    # Training set sizes (70% of each dataset, before SMOTE)
-    # H1: Framingham 4238 * 0.7 ~ 2967
-    # H2: IEEE-CHD   1190 * 0.7 ~  833
-    # H3: Cleveland   920 * 0.7 ~  644
-    # H4: FIC Pakistan 1000 * 0.7 ~ 700
-    # H5: Kaggle HD   1025 * 0.7 ~  718
-    n_train_per_client = [2967, 833, 644, 700, 718]
-    client_labels = ["H1 (Framingham)", "H2 (IEEE-CHD)", "H3 (Cleveland)",
-                     "H4 (FIC-PK)", "H5 (Kaggle)"]
-
-    accountant = RDPAccountant(
-        noise_multiplier=1.1,
-        max_grad_norm=1.0,
-        batch_size=32,
-        delta=1e-5,
-    )
-    return accountant.audit_all_clients(
-        n_train_per_client=n_train_per_client,
-        n_rounds=n_rounds,
-        local_epochs=local_epochs,
-        client_labels=client_labels,
-    )
-
-
-if __name__ == "__main__":
-    audit_paper_scenario()

@@ -1,33 +1,8 @@
 """
-data_utils.py - Data loading, harmonization, and preprocessing.
-
-Five publicly available cardiovascular datasets are harmonized to a common
-6-feature schema and split into per-client training/validation/test partitions
-(70/10/20) that simulate the non-IID, institutionally siloed nature of real
-healthcare data.
-
-Preprocessing pipeline (applied per client, in order)
-------------------------------------------------------
-0. Binarisation of the target column (any positive class -> 1) and
-   stratified 70/10/20 train/validation/test split.
-1. IQR-based outlier capping: bounds (Q1 - 1.5*IQR, Q3 + 1.5*IQR) are
-   computed from the training fold only and applied to all folds.
-2. Median imputation for missing values: medians are computed from the
-   training fold only and applied to all folds, preventing leakage of
-   held-out statistics into training-time preprocessing.
-3. SMOTE oversampling applied to the training fold only to address
-   class imbalance.
-4. StandardScaler normalization (fit on training fold, applied to all folds).
-
-Datasets
---------
-Client H1  -  Framingham Heart Study           (framingham.csv)
-Client H2  -  IEEE Comprehensive Heart Disease  (ieee_chd.csv)
-Client H3  -  UCI Cleveland Heart Disease       (cleveland.csv)
-Client H4  -  FIC Pakistan                      (fic_pakistan.csv)
-Client H5  -  Kaggle Heart Prediction           (kaggle_heart.csv)
-
-Download instructions: see data/README.md
+data_utils.py - Data loading, harmonization, and preprocessing for the
+four-client federation. See data/README.md for dataset details and the
+top-level README's "Datasets" and "Preprocessing pipeline" sections for
+the full rationale behind the schema and pipeline choices below.
 """
 
 from __future__ import annotations
@@ -39,7 +14,7 @@ import numpy as np
 import pandas as pd
 from flwr.common import Metrics
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import MinMaxScaler
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -48,18 +23,17 @@ warnings.filterwarnings("ignore", category=UserWarning)
 # ---------------------------------------------------------------------------
 
 FILENAMES = [
-    "framingham.csv",       # H1 - Framingham Heart Study
+    "zalizadeh_sani.csv",   # H1 - Z-Alizadeh Sani
     "ieee_chd.csv",         # H2 - IEEE Comprehensive Heart Disease
     "cleveland.csv",        # H3 - UCI Cleveland Heart Disease
-    "fic_pakistan.csv",     # H4 - FIC Pakistan
-    "kaggle_heart.csv",     # H5 - Kaggle Heart Prediction
+    "kaggle_heart.csv",     # H4 - Cardiovascular Disease (sulianova)
 ]
 
 # Column rename maps per dataset -> common 6-feature schema
 # Harmonized features: age, sex, trestbps (systolic BP), diaBP (diastolic BP),
 #                      chol (cholesterol), fbs (fasting blood glucose)
 COLUMN_MAPPINGS: List[Dict[str, str]] = [
-    # H1 - Framingham
+    # H1 - Z-Alizadeh Sani
     {
         "male": "sex",
         "age": "age",
@@ -68,9 +42,18 @@ COLUMN_MAPPINGS: List[Dict[str, str]] = [
         "diaBP": "diaBP",
         "glucose": "fbs",
         "TenYearCHD": "target",
+        "Typical Chest Pain": "h1_typical_chest_pain",
+        "EF-TTE": "h1_ef_tte",
+        "Region RWMA": "h1_region_rwma",
+        "HTN": "h1_htn",
+        "TG": "h1_tg",
+        "K": "h1_k",
+        "Tinversion": "h1_tinversion",
+        "ESR": "h1_esr",
+        "Neut": "h1_neut",
+        "HDL": "h1_hdl",
     },
-    # H2 - IEEE Comprehensive Heart Disease (heart_statlog_cleveland_hungary_final;
-    # no diastolic-BP column - diaBP is median-imputed like H3 and H5 below)
+    # H2 - IEEE Comprehensive Heart Disease
     {
         "age": "age",
         "sex": "sex",
@@ -88,22 +71,8 @@ COLUMN_MAPPINGS: List[Dict[str, str]] = [
         "fbs": "fbs",
         "num": "target",
     },
-    # H4 - FIC Pakistan (target column is Mortality, not DEATH_EVENT; no
-    # diastolic-BP column - diaBP is median-imputed)
-    {
-        "Age": "age",
-        "Gender": "sex",
-        "trestbps": "trestbps",
-        "chol": "chol",
-        "fbs": "fbs",
-        "Mortality": "target",
-    },
-    # H5 - Cardiovascular Disease dataset (sulianova, Kaggle), substituted for
-    # the original rashadrmammadov/heart-disease-prediction source which
-    # became inaccessible; pre-processed via convert_cardio_sulianova.py.
-    # Cholesterol/Glucose are on a 3-level ordinal scale (1/2/3), not
-    # continuous mg/dL, unlike the other four clients (see conversion
-    # script docstring).
+    # H4 - Cardiovascular Disease dataset (sulianova). Cholesterol/glucose
+    # are on a 3-level ordinal scale, not continuous mg/dL.
     {
         "Age": "age",
         "Gender": "sex",
@@ -115,8 +84,27 @@ COLUMN_MAPPINGS: List[Dict[str, str]] = [
     },
 ]
 
-# Harmonized 6-feature set (same order for every client)
-FINAL_FEATURES = ["age", "sex", "trestbps", "diaBP", "chol", "fbs"]
+# Harmonized feature set, same order for every client: base 6 shared
+# features + 6 one-hot columns for H4's ordinal chol/fbs categories
+# (zero for H1-H3) + H1's 10 extra native features (zero for H2-H4).
+# See README "Harmonized Schema" for the full rationale.
+H1_EXTRA_FEATURES = [
+    "h1_typical_chest_pain", "h1_ef_tte", "h1_region_rwma", "h1_htn",
+    "h1_tg", "h1_k", "h1_tinversion", "h1_esr", "h1_neut", "h1_hdl",
+]
+
+FINAL_FEATURES = [
+    "age", "sex", "trestbps", "diaBP", "chol", "fbs",
+    "chol_ord_1", "chol_ord_2", "chol_ord_3",
+    "fbs_ord_1", "fbs_ord_2", "fbs_ord_3",
+] + H1_EXTRA_FEATURES
+ONE_HOT_ORDINAL_FEATURES = ["chol_ord_1", "chol_ord_2", "chol_ord_3",
+                             "fbs_ord_1", "fbs_ord_2", "fbs_ord_3"]
+# Index of the client (H4, 0-based) whose chol/fbs are native ordinal
+# categories rather than continuous/binary values.
+ORDINAL_CLIENT_INDEX = 3
+# Index of the client (H1, 0-based) whose extra native features are H1_EXTRA_FEATURES.
+EXTRA_FEATURE_CLIENT_INDEX = 0
 TARGET_COLUMN = "target"
 
 
@@ -130,6 +118,10 @@ def _iqr_bounds(df_train: pd.DataFrame, features: List[str]) -> Dict[str, Tuple[
     bounds: Dict[str, Tuple[float, float]] = {}
     for col in features:
         if col not in df_train.columns:
+            continue
+        # Binary/near-constant columns have no meaningful IQR outliers;
+        # capping them can collapse a skewed flag to a single value.
+        if df_train[col].nunique(dropna=True) <= 2:
             continue
         q1 = df_train[col].quantile(0.25)
         q3 = df_train[col].quantile(0.75)
@@ -183,6 +175,43 @@ def _apply_smote(
 # Public API
 # ---------------------------------------------------------------------------
 
+def get_pre_smote_train_sizes(
+    data_dir: str = ".",
+    val_size: float = 0.10,
+    test_size: float = 0.20,
+    random_state: int = 42,
+) -> List[int]:
+    """Per-client training-fold row count before SMOTE, in FILENAMES order.
+    Used by RDP accounting and the fuzzy fairness controller, which need
+    the real (pre-oversampling) population size."""
+    import os
+
+    sizes: List[int] = []
+    for i, filename in enumerate(FILENAMES):
+        df = pd.read_csv(os.path.join(data_dir, filename))
+        df.columns = df.columns.str.strip()
+        df.rename(columns=COLUMN_MAPPINGS[i], inplace=True)
+        if TARGET_COLUMN not in df.columns:
+            raise ValueError(
+                f"Target column '{TARGET_COLUMN}' not found in {filename} after mapping."
+            )
+        df[TARGET_COLUMN] = (
+            pd.to_numeric(df[TARGET_COLUMN], errors="coerce") > 0
+        ).astype(int)
+
+        df_trainval, _ = train_test_split(
+            df, test_size=test_size, random_state=random_state,
+            stratify=df[TARGET_COLUMN],
+        )
+        val_fraction_of_trainval = val_size / (1.0 - test_size)
+        df_train, _ = train_test_split(
+            df_trainval, test_size=val_fraction_of_trainval,
+            random_state=random_state, stratify=df_trainval[TARGET_COLUMN],
+        )
+        sizes.append(len(df_train))
+    return sizes
+
+
 def load_and_preprocess_data(
     data_dir: str = ".",
     val_size: float = 0.10,
@@ -194,47 +223,17 @@ def load_and_preprocess_data(
     Optional[List[Tuple[np.ndarray, np.ndarray]]],
     Optional[List[str]],
 ]:
-    """Load and harmonize all five cardiovascular datasets.
+    """Load and harmonize all four client datasets. Pipeline per client:
+    target binarisation -> stratified 70/10/20 split -> IQR capping ->
+    median imputation -> SMOTE (train only) -> MinMaxScaler. See README
+    "Preprocessing pipeline" for the rationale.
 
-    The preprocessing pipeline for each client is:
-        1. Binarisation of the target column.
-        2. Stratified 70/10/20 train/validation/test split.
-        3. IQR-based outlier capping (bounds from the training fold only).
-        4. Median imputation for remaining missing values (medians from the
-           training fold only) - both 3. and 4. are fit on the training
-           fold and applied unchanged to val/test, preventing leakage.
-        5. SMOTE oversampling on the training fold only.
-        6. StandardScaler normalization (fit on train, applied to val and test).
-
-    Note: the Flower simulation uses only training and test folds. The
-    validation fold is returned separately as ``client_val_datasets`` and
-    is intended for hyperparameter tuning (see ``experiments/run_hpo.py``)
-    outside the FL loop, so that the held-out test folds used for the
-    benchmark and privacy-utility tables are never touched during tuning.
-
-    Parameters
-    ----------
-    data_dir:
-        Directory that contains the five CSV files.
-    val_size:
-        Fraction of each client's data reserved for validation (default 0.10).
-    test_size:
-        Fraction of each client's data reserved for testing (default 0.20).
-    random_state:
-        Random seed for reproducibility.
-
-    Returns
-    -------
-    client_train_datasets : list of (X_train, y_train) arrays (post-SMOTE).
-    client_val_datasets   : list of (X_val,   y_val)   arrays (pre-SMOTE).
-    client_test_datasets  : list of (X_test,  y_test)  arrays.
-    filenames             : list of dataset file names (same order).
-
-    All four return values are ``None`` if loading fails for any dataset.
+    Returns (client_train_datasets, client_val_datasets,
+    client_test_datasets, filenames); all None on load failure.
     """
     import os
 
-    print("--- Loading and Preprocessing Datasets for 5 Clients ---")
+    print(f"--- Loading and Preprocessing Datasets for {len(FILENAMES)} Clients ---")
     print(f"    Features: {FINAL_FEATURES}")
     print(f"    Split: 70% train / {int(val_size*100)}% val / {int(test_size*100)}% test")
 
@@ -262,10 +261,19 @@ def load_and_preprocess_data(
 
             df = df[FINAL_FEATURES + [TARGET_COLUMN]].copy()
 
-            # Harmonise 'sex' string labels -> binary (1=Male, 0=Female)
-            if df["sex"].dtype == object:
-                sex_map = {"Male": 1, "Female": 0, "male": 1, "female": 0,
-                           "M": 1, "F": 0, "1": 1, "0": 0}
+            # One-hot encode H4's ordinal chol/fbs categories; zero elsewhere.
+            if i == ORDINAL_CLIENT_INDEX:
+                chol_codes = pd.to_numeric(df["chol"], errors="coerce")
+                fbs_codes = pd.to_numeric(df["fbs"], errors="coerce")
+                for level in (1, 2, 3):
+                    df[f"chol_ord_{level}"] = (chol_codes == level).astype(float)
+                    df[f"fbs_ord_{level}"] = (fbs_codes == level).astype(float)
+            else:
+                for col in ONE_HOT_ORDINAL_FEATURES:
+                    df[col] = 0.0
+
+            # Harmonise 'sex' string labels -> binary (1=Male, 0=Female).
+            if not pd.api.types.is_numeric_dtype(df["sex"]):
                 df["sex"] = (
                     df["sex"].astype(str).str.strip().str.capitalize()
                     .map({"Male": 1, "Female": 0})
@@ -276,17 +284,12 @@ def load_and_preprocess_data(
             for col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
 
-            # Binarise target (any positive class -> 1). Deterministic
-            # thresholding, so doing this before the split introduces no
-            # train/test leakage.
+            # Binarise target (any positive class -> 1)
             df[TARGET_COLUMN] = (df[TARGET_COLUMN] > 0).astype(int)
             y_full = df[TARGET_COLUMN].values
 
-            # Step 1: Stratified 70/10/20 split, performed on the raw
-            # (pre-capping, pre-imputation) frame so that every subsequent
-            # preprocessing statistic (IQR bounds, medians, scaler) is fit
-            # on the training fold only and merely applied to val/test -
-            # matching the paper's stated no-leakage preprocessing protocol.
+            # Split first; every later statistic (IQR bounds, medians,
+            # scaler) is fit on the training fold only, no leakage.
             df_trainval, df_test = train_test_split(
                 df,
                 test_size=test_size,
@@ -301,16 +304,11 @@ def load_and_preprocess_data(
                 stratify=df_trainval[TARGET_COLUMN],
             )
 
-            # Step 2: IQR-based outlier capping - bounds computed from the
-            # training fold only, applied identically to train/val/test.
             iqr_bounds = _iqr_bounds(df_train, FINAL_FEATURES)
             df_train = _apply_iqr_cap(df_train, iqr_bounds)
             df_val = _apply_iqr_cap(df_val, iqr_bounds)
             df_test = _apply_iqr_cap(df_test, iqr_bounds)
 
-            # Step 3: Median imputation - medians computed from the
-            # (capped) training fold only, applied identically to
-            # train/val/test, preventing any cross-fold leakage.
             train_medians = df_train[FINAL_FEATURES].median()
             for split_df in (df_train, df_val, df_test):
                 split_df[FINAL_FEATURES] = split_df[FINAL_FEATURES].fillna(train_medians)
@@ -324,11 +322,9 @@ def load_and_preprocess_data(
             y_test = df_test[TARGET_COLUMN].values.astype(np.int64)
             y = y_full
 
-            # Step 4: SMOTE on training fold only
             X_train_res, y_train_res = _apply_smote(X_train, y_train, random_state)
 
-            # Step 5: StandardScaler (fit on pre-SMOTE train to avoid leakage)
-            scaler = StandardScaler()
+            scaler = MinMaxScaler()
             scaler.fit(X_train)
             X_train_scaled = scaler.transform(X_train_res)
             X_val_scaled = scaler.transform(X_val)

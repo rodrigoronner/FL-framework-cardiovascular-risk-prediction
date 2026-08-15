@@ -1,16 +1,10 @@
 """
 experiments/run_hpo.py
 =======================
-Hyperparameter optimization for the proposed DP-FedAdam server optimizer,
-using Optuna (TPE sampler + median pruning).
-
-Tunes the four server-side hyperparameters (eta, beta_1, beta_2, tau) at the
-primary DP operating point (sigma=1.1, C=1.0) against the *validation* fold
-of every client (never the test fold used for the paper's benchmark and
-privacy-utility tables), using a short 30-round federated run per trial to
-keep the search tractable. The best configuration found is written to
-``results/best_hyperparameters.json`` and can be fed into
-``run_comparison.py`` / ``run_dp_sensitivity.py``.
+Optuna (TPE + median pruning) search over the DP-FedAdam server
+hyperparameters (eta, beta_1, beta_2, tau) against each client's
+validation fold (never the test fold), using a short federated run per
+trial. Writes the best config to results/best_hyperparameters.json.
 
 Usage
 -----
@@ -38,11 +32,10 @@ from fedcvr.client import build_client
 from fedcvr.data_utils import aggregate_metrics_fn, load_and_preprocess_data
 from fedcvr.strategy import FedCVRStrategy
 
-DP_CONFIG: Dict = {"noise_multiplier": 1.1, "max_grad_norm": 1.0}
-
 
 def _objective_factory(
-    client_train_data, client_val_data, num_rounds: int
+    client_train_data, client_val_data, num_rounds: int,
+    use_dp: bool = True, dp_config: Dict = None, local_epochs: int = 5,
 ):
     num_clients = len(client_train_data)
 
@@ -57,9 +50,9 @@ def _objective_factory(
                 cid=cid,
                 client_train_data=client_train_data,
                 client_test_data=client_val_data,  # evaluate on val, not test
-                local_epochs=5,
-                use_dp=True,
-                dp_config=DP_CONFIG,
+                local_epochs=local_epochs,
+                use_dp=use_dp,
+                dp_config=dp_config if use_dp else None,
             ).to_client()
 
         strategy = FedCVRStrategy(
@@ -88,10 +81,7 @@ def _objective_factory(
         if not f1_curve:
             return 0.0
 
-        # Report intermediate F1 for pruning, at every round the strategy
-        # produced a value, and return the final round's F1 as the
-        # trial's objective (val-set F1, not accuracy, given the paper's
-        # emphasis on recall/F1 under class imbalance).
+        # Report intermediate F1 for pruning; objective is the final round's F1.
         for rnd, val in f1_curve:
             trial.report(val, step=rnd)
             if trial.should_prune():
@@ -107,9 +97,14 @@ def run(
     n_trials: int = 40,
     rounds_per_trial: int = 30,
     out_dir: str = "results",
+    out_name: str = "best_hyperparameters.json",
     seed: int = 42,
+    use_dp: bool = True,
+    noise_multiplier: float = 1.1,
+    local_epochs: int = 5,
 ) -> None:
     os.makedirs(out_dir, exist_ok=True)
+    dp_config = {"noise_multiplier": noise_multiplier, "max_grad_norm": 1.0}
 
     client_train_data, client_val_data, _client_test_data, _ = load_and_preprocess_data(
         data_dir=data_dir
@@ -118,20 +113,25 @@ def run(
         print("ERROR: Could not load datasets. Aborting.")
         sys.exit(1)
 
+    print(f"DP-SGD: {'ENABLED (sigma=' + str(noise_multiplier) + ', local_epochs=' + str(local_epochs) + ')' if use_dp else 'DISABLED (plain FL, no privacy noise)'}")
+
     sampler = optuna.samplers.TPESampler(seed=seed)
     pruner = optuna.pruners.MedianPruner(n_warmup_steps=10)
     study = optuna.create_study(
         direction="maximize", sampler=sampler, pruner=pruner,
         study_name="dp_fedadam_hpo",
     )
-    objective = _objective_factory(client_train_data, client_val_data, rounds_per_trial)
+    objective = _objective_factory(
+        client_train_data, client_val_data, rounds_per_trial,
+        use_dp=use_dp, dp_config=dp_config, local_epochs=local_epochs,
+    )
     study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
 
     print("\nBest trial:")
     print(f"  Value (val F1): {study.best_value:.4f}")
     print(f"  Params: {study.best_params}")
 
-    out_path = os.path.join(out_dir, "best_hyperparameters.json")
+    out_path = os.path.join(out_dir, out_name)
     with open(out_path, "w") as f:
         json.dump(
             {
@@ -139,7 +139,9 @@ def run(
                 "best_params": study.best_params,
                 "n_trials": n_trials,
                 "rounds_per_trial": rounds_per_trial,
-                "dp_config": DP_CONFIG,
+                "use_dp": use_dp,
+                "local_epochs": local_epochs,
+                "dp_config": dp_config if use_dp else None,
             },
             f,
             indent=2,
@@ -163,7 +165,16 @@ if __name__ == "__main__":
         help="Shortened federated horizon per trial (full benchmark uses 100).",
     )
     parser.add_argument("--out_dir", type=str, default="results")
+    parser.add_argument("--out_name", type=str, default="best_hyperparameters.json",
+                        help="Output filename, to avoid clobbering a hyperparameter "
+                             "set tuned under a different DP configuration.")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--no_dp", action="store_true",
+                        help="Disable DP-SGD while tuning (plain FL).")
+    parser.add_argument("--noise_multiplier", type=float, default=1.1,
+                        help="DP noise multiplier (sigma) to tune under, if --no_dp is not set.")
+    parser.add_argument("--local_epochs", type=int, default=5,
+                        help="Local SGD epochs per round during tuning.")
     args = parser.parse_args()
 
     run(
@@ -171,5 +182,9 @@ if __name__ == "__main__":
         n_trials=args.n_trials,
         rounds_per_trial=args.rounds_per_trial,
         out_dir=args.out_dir,
+        out_name=args.out_name,
         seed=args.seed,
+        use_dp=not args.no_dp,
+        noise_multiplier=args.noise_multiplier,
+        local_epochs=args.local_epochs,
     )

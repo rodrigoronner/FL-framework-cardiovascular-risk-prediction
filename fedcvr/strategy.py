@@ -1,32 +1,18 @@
 """
-strategy.py – FedCVR server-side aggregation strategy.
+strategy.py - FedCVR server-side aggregation strategy. ``FedCVRStrategy``
+extends Flower's ``FedAvg`` with a DP-FedAdam server optimizer applying
+bias-corrected first/second-moment estimation to the aggregated
+pseudo-gradient (delta = avg_client_update - current_global_weights):
 
-``FedCVRStrategy`` extends Flower's ``FedAvg`` with an Adam-style server
-an optimizer that applies bias-corrected first- and second-moment estimation to
-the aggregated pseudo-gradient (Δ = avg_client_update − current_global_weights).
-
-Server update rule (per round t)
----------------------------------
-    Δ_t  = FedAvg(client_updates) − w_t          # pseudo-gradient
-    m_t  = β₁ · m_{t-1} + (1 − β₁) · Δ_t        # 1st moment
-    v_t  = β₂ · v_{t-1} + (1 − β₂) · Δ_t²       # 2nd moment
-    m̂_t  = m_t / (1 − β₁ᵗ)                       # bias correction
-    v̂_t  = v_t / (1 − β₂ᵗ)                       # bias correction
-    w_{t+1} = w_t + η · m̂_t / (√v̂_t + ε)        # parameter update
-
-Default hyperparameters match those used in the paper experiments:
-    η = 0.1,  β₁ = 0.9,  β₂ = 0.999,  τ = 1e-3
-
-The class also stores per-round per-client evaluation metrics so that
-results can be inspected or exported after the simulation.
+    delta_t = FedAvg(client_updates) - w_t
+    m_t = b1*m_{t-1} + (1-b1)*delta_t
+    v_t = b2*v_{t-1} + (1-b2)*delta_t^2
+    w_{t+1} = w_t + eta * m_hat_t / (sqrt(v_hat_t) + tau)
 
 ``_AdaptiveServerStrategy`` factors out the plumbing shared by every
-stateful server-side optimizer evaluated in the paper's benchmark
-(``FedCVRStrategy`` here, and ``FedAdagradStrategy`` / ``FedYogiStrategy``
-in ``fedcvr.baselines``): bootstrapping w_0 from the first round's plain
-FedAvg result (Algorithm 1 requires w_0 as input and zero-initializes only
-the moment vectors, never the model itself), and per-client evaluation
-metric logging. Subclasses only implement the per-round update rule.
+stateful server optimizer here and in ``fedcvr.baselines``
+(FedAdagrad/FedYogi): bootstrapping w_0 from round 1's plain FedAvg
+result, and per-client evaluation metric logging.
 """
 
 from __future__ import annotations
@@ -44,6 +30,17 @@ from flwr.common import (
 )
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import FedAvg
+
+
+def _partition_key(client: ClientProxy) -> str:
+    """Stable per-client dataset-index key ("0".."N-1"), robust to Flower
+    versions where ``ClientProxy.cid`` is a large random node id rather
+    than the sequential index passed to ``client_fn``. Newer Flower
+    simulation backends (``RayActorClientProxy``) expose the real
+    sequential index as ``.partition_id``; older ones set ``cid`` itself
+    to that index, so this falls back to ``cid`` when ``partition_id``
+    is absent."""
+    return str(getattr(client, "partition_id", client.cid))
 
 
 class _AdaptiveServerStrategy(FedAvg):
@@ -85,12 +82,8 @@ class _AdaptiveServerStrategy(FedAvg):
 
         aggregated_ndarrays = parameters_to_ndarrays(aggregated_parameters)
 
-        # On the very first round there is no previously-tracked global
-        # model to diff against. Algorithm 1 requires w_0 (the actual
-        # initial model) as input and zero-initialises only the moment
-        # vectors - so we bootstrap w_0 from this round's plain FedAvg
-        # result rather than from zeros, and start applying the optimiser
-        # update from the following round.
+        # Bootstrap w_0 from round 1's plain FedAvg result (no prior
+        # global model to diff against yet); moment vectors start at zero.
         if self._current_weights is None:
             self._current_weights = [np.array(p, copy=True) for p in aggregated_ndarrays]
             self._init_state(aggregated_ndarrays)
@@ -126,7 +119,7 @@ class _AdaptiveServerStrategy(FedAvg):
 
         if results:
             self.client_metrics_history[server_round] = {
-                client_proxy.cid: {"loss": res.loss, **res.metrics}
+                _partition_key(client_proxy): {"loss": res.loss, **res.metrics}
                 for client_proxy, res in results
             }
 
@@ -173,10 +166,8 @@ class FedCVRStrategy(_AdaptiveServerStrategy):
         failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
     ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
         if self.eta == 0.0:
-            # eta == 0 disables the server-side Adam optimizer entirely:
-            # the server aggregation step is a simple weighted average
-            # (used to emulate the FedAvg / FedProx baselines, per the
-            # paper's description of those methods).
+            # eta=0 disables the Adam step, reducing to plain FedAvg
+            # (used to emulate the FedAvg/FedProx baselines).
             aggregated_parameters, aggregated_metrics = FedAvg.aggregate_fit(
                 self, server_round, results, failures
             )

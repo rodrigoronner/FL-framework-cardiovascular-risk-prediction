@@ -1,27 +1,8 @@
 """
-fuzzy_fairness.py - Mamdani fuzzy controller for per-client privacy fairness.
-
-Implements the fuzzy fairness extension outlined in the paper's "Soft-Computing
-Positioning and a Fuzzy Extension for Fairness" discussion. The per-client RDP
-fairness audit (fedcvr.rdp_accountant) exposes a spread in effective epsilon
-across clients, driven by dataset-size imbalance: smaller clients suffer a
-higher per-step subsampling rate q = batch_size / n_train for the same nominal
-(sigma, C), hence a higher effective epsilon.
-
-This module closes that loop with a rule-based, rather than closed-form,
-rebalancing mechanism. Two linguistic inputs are used per client:
-  - dataset size  (n_train)      -> {small, medium, large}
-  - effective epsilon (epsilon_k) -> {low, moderate, high}
-and a single linguistic output:
-  - batch-size multiplier -> {decrease, keep, increase}
-
-A small (high-epsilon) client is recommended a smaller per-client batch size
-(shrinking q_k, lowering its epsilon); a large (low-epsilon) client is
-recommended a larger batch size (raising q_k slightly, using its privacy
-headroom for faster/more stable convergence). Applying the recommended
-per-client batch sizes and re-running the RDP accountant narrows the
-epsilon spread relative to the fixed-L=32-for-everyone baseline, without
-solving the (non-convex) inverse RDP-accounting problem analytically.
+fuzzy_fairness.py - Mamdani fuzzy controller recommending a per-client
+DP-SGD batch size from (dataset size, effective epsilon), to narrow the
+per-client privacy-fairness spread reported by the RDP accountant. See
+README "Fuzzy fairness rebalancing" for the rule base and rationale.
 
 Usage
 -----
@@ -30,12 +11,9 @@ Usage
 
     controller = FuzzyFairnessController()
     accountant = RDPAccountant(noise_multiplier=1.1, max_grad_norm=1.0, delta=1e-5)
-
     report = controller.rebalance(
-        accountant=accountant,
-        n_train_per_client=[2967, 833, 644, 700, 718],
-        n_rounds=100, local_epochs=5,
-        client_labels=["H1", "H2", "H3", "H4", "H5"],
+        accountant=accountant, n_train_per_client=[211, 833, 644, 717],
+        n_rounds=100, local_epochs=5, client_labels=["H1", "H2", "H3", "H4"],
     )
     print(report)
 """
@@ -107,9 +85,7 @@ class FuzzyFairnessController:
     Parameters
     ----------
     n_train_universe : (float, float)
-        Min/max of the dataset-size universe of discourse. Defaults span
-        the range observed across the paper's five clients (roughly
-        600-3,000 pre-SMOTE training records).
+        Min/max of the dataset-size universe of discourse.
     epsilon_universe : (float, float)
         Min/max of the effective-epsilon universe of discourse.
     multiplier_universe : (float, float)
@@ -151,11 +127,7 @@ class FuzzyFairnessController:
         multiplier["keep"] = fuzz.trimf(multiplier.universe, [0.75, 1.0, 1.25])
         multiplier["increase"] = fuzz.trimf(multiplier.universe, [1.0, m_hi, m_hi])
 
-        # Full 3x3 rule base over (n_train, epsilon) -> multiplier. A small,
-        # high-epsilon client (over-paying in privacy cost) is pushed toward
-        # a smaller batch size (lowers q_k, lowers epsilon_k); a large,
-        # low-epsilon client (privacy headroom) is pushed toward a larger
-        # batch size. Ambiguous/inconsistent combinations default to "keep".
+        # 3x3 rule base over (n_train, epsilon) -> multiplier.
         rules = [
             fuzzy_ctrl.Rule(n_train["small"] & epsilon["high"], multiplier["decrease"]),
             fuzzy_ctrl.Rule(n_train["small"] & epsilon["moderate"], multiplier["decrease"]),
@@ -241,30 +213,3 @@ class FuzzyFairnessController:
         return FairnessRebalanceReport(clients=results)
 
 
-def audit_paper_scenario_with_fuzzy_rebalancing(
-    n_rounds: int = 100, local_epochs: int = 5
-) -> FairnessRebalanceReport:
-    """Reproduce Table 3's per-client audit (sigma=1.1, delta=1e-5, L=32)
-    and report the fuzzy-rebalanced spread alongside the fixed-L baseline."""
-    from .rdp_accountant import RDPAccountant
-
-    n_train_per_client = [2967, 833, 644, 700, 718]
-    client_labels = ["H1 (Framingham)", "H2 (IEEE-CHD)", "H3 (Cleveland)",
-                      "H4 (FIC-PK)", "H5 (Kaggle)"]
-
-    accountant = RDPAccountant(noise_multiplier=1.1, max_grad_norm=1.0, delta=1e-5)
-    controller = FuzzyFairnessController()
-    report = controller.rebalance(
-        accountant=accountant,
-        n_train_per_client=n_train_per_client,
-        n_rounds=n_rounds,
-        local_epochs=local_epochs,
-        base_batch_size=32,
-        client_labels=client_labels,
-    )
-    print(report)
-    return report
-
-
-if __name__ == "__main__":
-    audit_paper_scenario_with_fuzzy_rebalancing()

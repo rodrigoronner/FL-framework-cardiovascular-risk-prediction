@@ -1,21 +1,10 @@
 """
-baselines.py – Competing server-side aggregation strategies used in the
-paper's Table benchmark comparison alongside ``FedCVRStrategy``.
-
-``FedAdagradStrategy`` and ``FedYogiStrategy`` follow the FedOpt template of
-Reddi et al. (2021, "Adaptive Federated Optimization"): both subclasses
-``_AdaptiveServerStrategy`` (see ``fedcvr.strategy``), which bootstraps w_0
-from the first round's plain FedAvg result, and provides per-client metric
-logging; each strategy only supplies its own second-moment update rule.
-
-``FedClusterStrategy`` implements the clustering baseline described in the
-paper: clients are partitioned into ``k`` groups by similarity of their
-local data distributions, and a separate FedAvg instance runs within each
-cluster (no adaptive optimizer, no proximal term). The paper's cited source
-(You et al., 2023) does not fully specify the clustering criterion, so
-``cluster_clients_by_distribution`` (see ``fedcvr.data_utils``) is this
-project's concrete instantiation of "cluster by data-distribution
-difference": KMeans over each client's mean feature vector.
+baselines.py - Competing server-side aggregation strategies benchmarked
+alongside FedCVRStrategy: FedAdagrad and FedYogi (FedOpt template, Reddi
+et al. 2021) subclass ``_AdaptiveServerStrategy`` (fedcvr.strategy) and
+supply their own second-moment update rule; FedCluster runs independent
+FedAvg within each of k pre-computed client clusters (KMeans over each
+client's mean feature vector, see data_utils.cluster_clients_by_distribution).
 """
 
 from __future__ import annotations
@@ -37,7 +26,7 @@ from flwr.server.client_manager import ClientManager
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import FedAvg
 
-from .strategy import _AdaptiveServerStrategy
+from .strategy import _AdaptiveServerStrategy, _partition_key
 
 
 class FedAdagradStrategy(_AdaptiveServerStrategy):
@@ -79,9 +68,7 @@ class FedYogiStrategy(_AdaptiveServerStrategy):
         v_t = v_{t-1} − (1 − β₂) · sign(v_{t-1} − Δ_t²) · Δ_t²
         w_{t+1} = w_t + η · m_t / (√|v_t| + τ)
 
-    ``|v_t|`` guards against the sign-based rule driving v_t slightly
-    negative, which the paper notes causes unstable dynamics under the
-    large-magnitude gradient spikes produced by per-sample DP clipping.
+    ``|v_t|`` guards against the sign-based rule driving v_t negative.
     """
 
     def __init__(
@@ -124,17 +111,10 @@ class FedYogiStrategy(_AdaptiveServerStrategy):
 
 class FedClusterStrategy(FedAvg):
     """Clustered FL baseline: independent FedAvg per pre-computed client
-    cluster (no adaptive optimizer, no proximal term).
-
-    Clients are partitioned ahead of time (see
-    ``data_utils.cluster_clients_by_distribution``) into ``k`` groups by
-    similarity of local data distributions. Each cluster maintains its own
-    FedAvg-aggregated model; a client only ever receives and contributes to
-    its own cluster's model (via ``configure_fit`` / ``configure_evaluate``
-    overrides that substitute per-cluster parameters). Reported metrics are
-    the sample-weighted average across all clients regardless of cluster,
-    matching every other method in the benchmark.
-    """
+    cluster (no adaptive optimizer, no proximal term). A client only ever
+    receives and contributes to its own cluster's model, via
+    ``configure_fit``/``configure_evaluate`` overrides that substitute
+    per-cluster parameters."""
 
     def __init__(self, *, cluster_assignment: Dict[str, int], **kwargs) -> None:
         super().__init__(**kwargs)
@@ -146,8 +126,8 @@ class FedClusterStrategy(FedAvg):
         self.client_metrics_history: Dict[int, Dict[str, Dict]] = {}
         self.final_weights: Optional[Parameters] = None
 
-    def _cluster_of(self, cid: str) -> int:
-        return self.cluster_assignment[cid]
+    def _cluster_of(self, client: ClientProxy) -> int:
+        return self.cluster_assignment[_partition_key(client)]
 
     def _cluster_parameters(self, cluster: int, fallback: Parameters) -> Parameters:
         weights = self._cluster_weights[cluster]
@@ -162,7 +142,7 @@ class FedClusterStrategy(FedAvg):
     ) -> List[Tuple[ClientProxy, FitIns]]:
         base_instructions = super().configure_fit(server_round, parameters, client_manager)
         return [
-            (client, FitIns(self._cluster_parameters(self._cluster_of(client.cid), parameters), fit_ins.config))
+            (client, FitIns(self._cluster_parameters(self._cluster_of(client), parameters), fit_ins.config))
             for client, fit_ins in base_instructions
         ]
 
@@ -171,7 +151,7 @@ class FedClusterStrategy(FedAvg):
     ) -> List[Tuple[ClientProxy, EvaluateIns]]:
         base_instructions = super().configure_evaluate(server_round, parameters, client_manager)
         return [
-            (client, EvaluateIns(self._cluster_parameters(self._cluster_of(client.cid), parameters), eval_ins.config))
+            (client, EvaluateIns(self._cluster_parameters(self._cluster_of(client), parameters), eval_ins.config))
             for client, eval_ins in base_instructions
         ]
 
@@ -192,7 +172,7 @@ class FedClusterStrategy(FedAvg):
             c: [] for c in range(self.n_clusters)
         }
         for client, fit_res in results:
-            by_cluster[self._cluster_of(client.cid)].append((client, fit_res))
+            by_cluster[self._cluster_of(client)].append((client, fit_res))
 
         for cluster, cluster_results in by_cluster.items():
             if not cluster_results:
@@ -206,9 +186,7 @@ class FedClusterStrategy(FedAvg):
                 weighted_sum = [acc + weight * p for acc, p in zip(weighted_sum, ndarrays)]
             self._cluster_weights[cluster] = weighted_sum
 
-        # Representative "global" parameters for logging/checkpointing:
-        # the largest cluster's model (all clients still evaluate on their
-        # own cluster's model via configure_evaluate).
+        # Representative "global" parameters for logging: largest cluster.
         largest_cluster = max(
             range(self.n_clusters),
             key=lambda c: sum(1 for cc in self.cluster_assignment.values() if cc == c),
@@ -233,7 +211,7 @@ class FedClusterStrategy(FedAvg):
 
         if results:
             self.client_metrics_history[server_round] = {
-                client_proxy.cid: {"loss": res.loss, **res.metrics}
+                _partition_key(client_proxy): {"loss": res.loss, **res.metrics}
                 for client_proxy, res in results
             }
 
