@@ -6,6 +6,5 @@ __pycache__/
 venv/
 .ipynb_checkpoints/
 results/
-data/*.csv
 .DS_Store
 catboost_info/
