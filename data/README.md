@@ -14,7 +14,7 @@ fasting glucose) correlated *positively* with target in every other client
 trained across the other clients scored AUC < 0.5 (worse than random)
 specifically on this client - a genuine label-semantics conflict, not a
 preprocessing bug, so the dataset was dropped rather than patched. The
-former H5 (sulianova) is now labelled H4. See `fedcvr/data_utils.py`'s
+former H5 (sulianova) is now labelled H4. See `dpfedadam/data_utils.py`'s
 module docstring and git history for the full record.
 
 ---
@@ -119,7 +119,7 @@ unlike H2 and H3, whose diastolic BP is absent and median-imputed.
 ## Harmonized Schema (22 features)
 
 All four datasets share a base **6-feature schema**; two clients each add extra
-columns that are zero for every other client (see `fedcvr/data_utils.py`
+columns that are zero for every other client (see `dpfedadam/data_utils.py`
 for the authoritative definitions). Features not present in a given
 dataset are filled with `NaN` and median-imputed **from that client's own
 training fold only** (no cross-fold or cross-client leakage).
@@ -157,7 +157,7 @@ clients' feature vectors (always zero for them).
 
 ## Preprocessing Pipeline
 
-The following steps are applied **per client** inside `fedcvr/data_utils.py`,
+The following steps are applied **per client** inside `dpfedadam/data_utils.py`,
 in this order (the split happens early so that every later statistic — IQR
 bounds, medians, the scaler — is fit on the training fold only and merely
 applied to val/test, with no leakage):

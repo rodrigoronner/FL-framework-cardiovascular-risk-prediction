@@ -1,7 +1,7 @@
 """
 experiments/run_dp_sensitivity_fuzzy.py
 ========================================
-Fuzzy per-client batch-size rebalancing (fedcvr.fuzzy_fairness.
+Fuzzy per-client batch-size rebalancing (dpfedadam.fuzzy_fairness.
 FuzzyFairnessController) at the adopted DP configuration (sigma=2.5,
 local_epochs=1 - see run_privacy_budget_test.py). Computes each client's
 baseline epsilon at a fixed L=32, asks the fuzzy controller for a
@@ -40,17 +40,17 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from flwr.common import parameters_to_ndarrays
 
-from fedcvr.client import build_client
-from fedcvr.data_utils import (
+from dpfedadam.client import build_client
+from dpfedadam.data_utils import (
     FILENAMES,
     aggregate_metrics_fn,
     get_pre_smote_train_sizes,
     load_and_preprocess_data,
 )
-from fedcvr.evaluation import calibrated_final_evaluation
-from fedcvr.fuzzy_fairness import FairnessRebalanceReport, FuzzyFairnessController
-from fedcvr.rdp_accountant import RDPAccountant
-from fedcvr.strategy import DPFedAdamStrategy
+from dpfedadam.evaluation import calibrated_final_evaluation
+from dpfedadam.fuzzy_fairness import FairnessRebalanceReport, FuzzyFairnessController
+from dpfedadam.rdp_accountant import RDPAccountant
+from dpfedadam.strategy import DPFedAdamStrategy
 
 MU = 0.0  # no proximal term - matches run_dp_sensitivity.py's Algorithm 2 convention
 DEFAULT_SERVER_KWARGS: Dict = {

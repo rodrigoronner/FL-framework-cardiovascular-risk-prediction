@@ -37,15 +37,15 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from flwr.common import parameters_to_ndarrays
 
-from fedcvr.baselines import FedAdagradStrategy, FedClusterStrategy, FedYogiStrategy
-from fedcvr.client import build_client
-from fedcvr.data_utils import (
+from dpfedadam.baselines import FedAdagradStrategy, FedClusterStrategy, FedYogiStrategy
+from dpfedadam.client import build_client
+from dpfedadam.data_utils import (
     aggregate_metrics_fn,
     cluster_clients_by_distribution,
     load_and_preprocess_data,
 )
-from fedcvr.evaluation import calibrated_final_evaluation
-from fedcvr.strategy import DPFedAdamStrategy
+from dpfedadam.evaluation import calibrated_final_evaluation
+from dpfedadam.strategy import DPFedAdamStrategy
 
 
 # ---------------------------------------------------------------------------

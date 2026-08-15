@@ -28,9 +28,9 @@ warnings.filterwarnings("ignore")
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from fedcvr.client import build_client
-from fedcvr.data_utils import aggregate_metrics_fn, load_and_preprocess_data
-from fedcvr.strategy import DPFedAdamStrategy
+from dpfedadam.client import build_client
+from dpfedadam.data_utils import aggregate_metrics_fn, load_and_preprocess_data
+from dpfedadam.strategy import DPFedAdamStrategy
 
 
 def _objective_factory(

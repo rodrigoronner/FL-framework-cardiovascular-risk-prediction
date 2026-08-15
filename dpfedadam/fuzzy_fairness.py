@@ -6,8 +6,8 @@ README "Fuzzy fairness rebalancing" for the rule base and rationale.
 
 Usage
 -----
-    from fedcvr.fuzzy_fairness import FuzzyFairnessController
-    from fedcvr.rdp_accountant import RDPAccountant
+    from dpfedadam.fuzzy_fairness import FuzzyFairnessController
+    from dpfedadam.rdp_accountant import RDPAccountant
 
     controller = FuzzyFairnessController()
     accountant = RDPAccountant(noise_multiplier=1.1, max_grad_norm=1.0, delta=1e-5)
@@ -30,7 +30,7 @@ try:
     from skfuzzy import control as fuzzy_ctrl
 except ImportError as exc:  # pragma: no cover
     raise ImportError(
-        "scikit-fuzzy is required for fedcvr.fuzzy_fairness. "
+        "scikit-fuzzy is required for dpfedadam.fuzzy_fairness. "
         "Install with: pip install scikit-fuzzy"
     ) from exc
 
@@ -175,7 +175,7 @@ class FuzzyFairnessController:
 
         Parameters
         ----------
-        accountant : fedcvr.rdp_accountant.RDPAccountant
+        accountant : dpfedadam.rdp_accountant.RDPAccountant
             Pre-configured with (noise_multiplier, max_grad_norm, delta).
             Its own ``batch_size`` attribute is overridden per-call below.
         """

@@ -33,10 +33,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from flwr.common import parameters_to_ndarrays
 
-from fedcvr.client import build_client
-from fedcvr.data_utils import aggregate_metrics_fn, load_and_preprocess_data
-from fedcvr.evaluation import calibrated_final_evaluation
-from fedcvr.strategy import DPFedAdamStrategy
+from dpfedadam.client import build_client
+from dpfedadam.data_utils import aggregate_metrics_fn, load_and_preprocess_data
+from dpfedadam.evaluation import calibrated_final_evaluation
+from dpfedadam.strategy import DPFedAdamStrategy
 
 
 # ---------------------------------------------------------------------------

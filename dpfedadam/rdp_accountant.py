@@ -6,7 +6,7 @@ n_rounds, local_epochs, delta). See README "Privacy Budget Accounting".
 
 Usage
 -----
-    from fedcvr.rdp_accountant import RDPAccountant
+    from dpfedadam.rdp_accountant import RDPAccountant
 
     accountant = RDPAccountant(noise_multiplier=1.1, max_grad_norm=1.0, batch_size=32, delta=1e-5)
     eps = accountant.compute_epsilon(n_train=211, n_rounds=100, local_epochs=5)
@@ -56,7 +56,7 @@ class RDPAccountant:
     ) -> float:
         """Effective (epsilon, delta)-DP guarantee for one client, over
         n_rounds x local_epochs steps. n_train must be the pre-SMOTE
-        sample count (see fedcvr.data_utils.get_pre_smote_train_sizes)."""
+        sample count (see dpfedadam.data_utils.get_pre_smote_train_sizes)."""
         try:
             from opacus.accountants.utils import get_noise_multiplier
             from opacus.accountants import RDPAccountant as OpacusRDP

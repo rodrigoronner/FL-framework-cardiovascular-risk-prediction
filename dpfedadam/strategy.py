@@ -10,7 +10,7 @@ pseudo-gradient (delta = avg_client_update - current_global_weights):
     w_{t+1} = w_t + eta * m_hat_t / (sqrt(v_hat_t) + tau)
 
 ``_AdaptiveServerStrategy`` factors out the plumbing shared by every
-stateful server optimizer here and in ``fedcvr.baselines``
+stateful server optimizer here and in ``dpfedadam.baselines``
 (FedAdagrad/FedYogi): bootstrapping w_0 from round 1's plain FedAvg
 result, and per-client evaluation metric logging.
 """

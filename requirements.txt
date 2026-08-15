@@ -1,4 +1,4 @@
-# FedCVR – Python dependencies
+# DP-FedAdam – Python dependencies
 # Tested with Python 3.10 / 3.11
 
 # Federated learning framework

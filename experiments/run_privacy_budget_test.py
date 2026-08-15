@@ -37,11 +37,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from flwr.common import parameters_to_ndarrays
 
-from fedcvr.client import build_client
-from fedcvr.data_utils import aggregate_metrics_fn, get_pre_smote_train_sizes, load_and_preprocess_data
-from fedcvr.evaluation import calibrated_final_evaluation
-from fedcvr.rdp_accountant import RDPAccountant
-from fedcvr.strategy import DPFedAdamStrategy
+from dpfedadam.client import build_client
+from dpfedadam.data_utils import aggregate_metrics_fn, get_pre_smote_train_sizes, load_and_preprocess_data
+from dpfedadam.evaluation import calibrated_final_evaluation
+from dpfedadam.rdp_accountant import RDPAccountant
+from dpfedadam.strategy import DPFedAdamStrategy
 
 MU = 0.0
 DEFAULT_SERVER_KWARGS: Dict = {

@@ -40,7 +40,7 @@ def convert(input_path: str, output_path: str) -> None:
     df["TenYearCHD"] = (df["Cath"] == "Cad").astype(int)
 
     # Top-10 features by CatBoost importance - H1-only additions to the
-    # global schema (fedcvr.data_utils.H1_EXTRA_FEATURES), zero elsewhere.
+    # global schema (dpfedadam.data_utils.H1_EXTRA_FEATURES), zero elsewhere.
     extra_cols = [
         "Typical Chest Pain", "EF-TTE", "Region RWMA", "HTN", "TG", "K",
         "Tinversion", "ESR", "Neut", "HDL",
