@@ -1,6 +1,6 @@
-# DP-FedAdam — Interpretable Differentially Private Federated Learning for Cardiovascular Risk Prediction
+# DP-FedAdam — Interpretable and Fairness-Aware Differentially Private Federated Learning for Cardiovascular Risk Prediction
 
-> **Paper:** *Interpretable Differentially Private Federated Learning for Cardiovascular Risk Prediction: Mechanistic Transparency and Fairness Auditing*
+> **Paper:** *Interpretable and Fairness-Aware Differentially Private Federated Learning for Cardiovascular Risk Prediction: A Fuzzy Approach to Practical Privacy Budgets*
 
 > **Note on anonymization:** This repository has been anonymized for double-blind peer review. Author names, institutional affiliations, and any other identifying details have been removed. The repository will be made fully public, with authorship attribution, upon acceptance of the manuscript.
 
