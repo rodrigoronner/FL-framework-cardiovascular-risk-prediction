@@ -4,7 +4,7 @@
 
 > **Note on anonymization:** author names and affiliations are not given here, for double-anonymized review.
 
-This branch (`revision-r1`) contains the code, data, per-run results and analysis scripts behind every number, table and figure of the revised manuscript. The first-submission pipeline (Flower orchestration, SMOTE, Optuna search, fitted preprocessing, the IEEE-CHD cohort) was removed because the review showed that it invalidated the reported privacy budgets; it remains in the git history.
+This repository contains the code, data, per-run results and analysis scripts behind every number, table and figure of the revised manuscript. The first-submission pipeline (Flower orchestration, SMOTE, Optuna search, fitted preprocessing, the IEEE-CHD cohort) was removed because the review showed that it invalidated the reported privacy budgets; it remains in the git history.
 
 ## What the study does
 
