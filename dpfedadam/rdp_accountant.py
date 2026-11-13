@@ -19,6 +19,8 @@ from typing import Dict, List, Optional
 import numpy as np
 
 
+_EPS_CACHE: dict = {}
+
 class RDPAccountant:
     """Per-client RDP privacy accountant based on Opacus utilities.
 
@@ -48,17 +50,34 @@ class RDPAccountant:
         self.batch_size = batch_size
         self.delta = delta
 
+    @staticmethod
+    def steps_per_epoch(n_train: int, batch_size: int) -> int:
+        """Lots per local epoch = len(DataLoader) = ceil(n_train / L)."""
+        return int(np.ceil(n_train / batch_size))
+
+    @staticmethod
+    def sample_rate(n_train: int, batch_size: int) -> float:
+        """Poisson inclusion probability used by Opacus: 1 / len(DataLoader)."""
+        return 1.0 / RDPAccountant.steps_per_epoch(n_train, batch_size)
+
     def compute_epsilon(
         self,
         n_train: int,
         n_rounds: int,
         local_epochs: int = 5,
     ) -> float:
-        """Effective (epsilon, delta)-DP guarantee for one client, over
-        n_rounds x local_epochs steps. n_train must be the pre-SMOTE
-        sample count (see dpfedadam.data_utils.get_pre_smote_train_sizes)."""
+        """Effective (epsilon, delta)-DP guarantee for one client after
+        ``n_rounds`` rounds of ``local_epochs`` local epochs.
+
+        The accounted mechanism is exactly the one the client executes
+        (experiments/revision_runner.py -> Opacus ``make_private``): Poisson subsampling
+        in which every one of the ``n_train`` real records is included in
+        a lot independently with probability q = 1 / ceil(n_train / L),
+        ceil(n_train / L) lots per local epoch, composed with the
+        Renyi-DP analysis of the subsampled Gaussian mechanism
+        (Mironov et al., 2019). ``n_train`` is the number of real
+        training records; the pipeline performs no oversampling."""
         try:
-            from opacus.accountants.utils import get_noise_multiplier
             from opacus.accountants import RDPAccountant as OpacusRDP
         except ImportError:
             raise ImportError(
@@ -66,15 +85,23 @@ class RDPAccountant:
                 "Install with: pip install opacus"
             )
 
-        sample_rate = self.batch_size / n_train
-        steps_per_epoch = int(np.ceil(n_train / self.batch_size))
+        sample_rate = self.sample_rate(n_train, self.batch_size)
+        steps_per_epoch = self.steps_per_epoch(n_train, self.batch_size)
         total_steps = n_rounds * local_epochs * steps_per_epoch
+        # The budget depends on the data only through steps_per_epoch, so
+        # identical (sigma, delta, steps per epoch, horizon) give identical
+        # results; memoize them (the lot-size searches call this often).
+        key = (float(self.noise_multiplier), float(self.delta), int(steps_per_epoch),
+               int(n_rounds), int(local_epochs))
+        if key in _EPS_CACHE:
+            return _EPS_CACHE[key]
 
         accountant = OpacusRDP()
         accountant.history = [(self.noise_multiplier, sample_rate, total_steps)]
 
-        epsilon = accountant.get_epsilon(delta=self.delta)
-        return float(epsilon)
+        epsilon = float(accountant.get_epsilon(delta=self.delta))
+        _EPS_CACHE[key] = epsilon
+        return epsilon
 
     def audit_all_clients(
         self,

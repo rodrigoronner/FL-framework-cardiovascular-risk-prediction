@@ -1,34 +1,30 @@
 """
-DP-FedAdam - Federated Cardiovascular Risk Prediction
+DP-FedAdam - privacy-budget auditing and allocation for differentially
+private federated cardiovascular risk prediction (ASOC-D-26-13458, R1).
 
-Privacy-preserving federated learning: client-side DP-SGD (Opacus),
-server-side DP-FedAdam, per-client RDP accounting, fuzzy fairness
-rebalancing, and FedProx/FedCluster/FedAdagrad/FedYogi baselines.
+Modules: data loading and harmonization (data_utils), the network
+(model), calibrated evaluation (evaluation), per-site Renyi accounting
+of the executed Poisson-subsampled Gaussian mechanism (rdp_accountant),
+and the lot-size allocation rules (epsilon_matched, proportional_fairness,
+fuzzy_fairness). Federated training is simulated in
+experiments/revision_runner.py; the fuzzy headroom policy is in
+experiments/headroom_study.py.
 """
 
-from .model import Net
-from .client import DPFedAdamClient, build_client
-from .strategy import DPFedAdamStrategy
-from .baselines import FedAdagradStrategy, FedYogiStrategy, FedClusterStrategy
-from .data_utils import (
-    load_and_preprocess_data,
-    aggregate_metrics_fn,
-    cluster_clients_by_distribution,
-)
-from .rdp_accountant import RDPAccountant
+from .data_utils import get_partition_metadata, get_train_sizes, load_and_preprocess_data
+from .epsilon_matched import EpsilonMatchedController
 from .fuzzy_fairness import FuzzyFairnessController
+from .model import Net
+from .proportional_fairness import ProportionalFairnessController
+from .rdp_accountant import RDPAccountant
 
 __all__ = [
-    "Net",
-    "DPFedAdamClient",
-    "build_client",
-    "DPFedAdamStrategy",
-    "FedAdagradStrategy",
-    "FedYogiStrategy",
-    "FedClusterStrategy",
-    "load_and_preprocess_data",
-    "aggregate_metrics_fn",
-    "cluster_clients_by_distribution",
-    "RDPAccountant",
+    "EpsilonMatchedController",
     "FuzzyFairnessController",
+    "Net",
+    "ProportionalFairnessController",
+    "RDPAccountant",
+    "get_partition_metadata",
+    "get_train_sizes",
+    "load_and_preprocess_data",
 ]

@@ -8,3 +8,4 @@ venv/
 results/
 .DS_Store
 catboost_info/
+results_revision/preds/

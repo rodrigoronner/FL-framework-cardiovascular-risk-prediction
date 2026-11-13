@@ -1,0 +1,43 @@
+federation          set  clients  constrained_share  noise_reduction  fuzzy_frac  eps_mean_0  eps_mean_1  eps_mean_fuzzy  rises_1  rises_fuzzy
+       F01  development        4              0.093            0.796       0.348       4.647       5.977           5.196        3            3
+       F02  development        5              0.093            0.757       0.284       4.913       5.977           5.254        3            3
+       F03 confirmation        5              0.185            0.702       0.471       5.083       5.977           5.630        3            3
+       F04  development        6              0.401            0.634       0.806       5.387       5.977           5.886        2            2
+       F05  development        6              0.376            0.651       0.708       5.368       5.977           5.846        2            2
+       F06  development        6              0.401            0.634       0.806       5.387       5.977           5.886        2            2
+       F07 confirmation        8              0.684            0.430       0.728       5.742       5.977           5.943        1            1
+       F08 confirmation        9              0.280            0.441       0.446       5.587       5.977           5.781        3            3
+       F09 confirmation        6              0.243            0.583       0.500       5.344       5.977           5.724        3            3
+       F10 confirmation        8              0.401            0.565       0.806       5.534       5.977           5.909        2            2
+       F11 confirmation        8              0.395            0.238       0.484       5.730       5.977           5.874        3            3
+       F12  development       14              0.684            0.301       0.503       5.843       5.977           5.925        1            1
+
+Crisp threshold tuned on development (validation AUC): spend all if constrained share >= 0.093
+
+Confirmation federations (test AUC; 6 federations x 10 partitions):
+policy  test_auc  regret  mean_client_eps
+    P0    0.7771  0.0080           5.5034
+   P05    0.7833  0.0018           5.7861
+    P1    0.7823  0.0028           5.9773
+    PT    0.7823  0.0028           5.9773
+    PF    0.7835  0.0016           5.8101
+
+Per federation (test AUC):
+arm              0     0.5       1   fuzzy      PT
+federation                                        
+F03         0.7828  0.7895  0.7934  0.7895  0.7934
+F07         0.7757  0.7798  0.7853  0.7787  0.7853
+F08         0.7692  0.7853  0.7764  0.7828  0.7764
+F09         0.7810  0.7824  0.7839  0.7824  0.7839
+F10         0.7765  0.7797  0.7763  0.7844  0.7763
+F11         0.7775  0.7833  0.7787  0.7833  0.7787
+
+Pre-specified criteria for the fuzzy policy:
+  S1 fuzzy - always equalize   diff +0.0012  95% CI [-0.0014, +0.0038]  one-sided lower -0.0010  Wilcoxon one-sided p 0.2879  wins 31/60
+  S3 fuzzy - never spend       diff +0.0064  95% CI [+0.0034, +0.0094]  one-sided lower +0.0039  Wilcoxon one-sided p 0.0001  wins 42/60
+  S1 non-inferior to P1 (lower bound > -0.005): True
+  S2 spends less privacy than P1: True (5.810 vs 5.977)
+  S3 better than P0 (one-sided Wilcoxon p < 0.05): True
+
+Secondary: fuzzy versus the crisp threshold rule
+  fuzzy - crisp threshold      diff +0.0012  95% CI [-0.0014, +0.0038]  one-sided lower -0.0010  Wilcoxon one-sided p 0.2879  wins 31/60
