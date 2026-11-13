@@ -1,0 +1,7 @@
+family,n_blocks,k,friedman_chi2,friedman_p,nemenyi_cd_0.05,mean_ranks
+allocation / macro AUC,20,4,24.420000000000016,2.0411699718903443e-05,1.0488028292894496,"{""fixed"": 3.45, ""fuzzy"": 2.0, ""search"": 1.65, ""proportional"": 2.9}"
+DP optimizers / macro AUC,20,5,67.88,6.358697791492148e-14,1.3638871854351884,"{""fedavg"": 4.0, ""fedprox"": 4.6, ""fedadagrad"": 2.0, ""fedyogi"": 3.35, ""fedadam"": 1.05}"
+no-DP optimizers / macro AUC,20,5,62.31999999999999,9.43408932503767e-13,1.3638871854351884,"{""fedavg"": 3.95, ""fedprox"": 4.65, ""fedadagrad"": 1.2, ""fedyogi"": 2.05, ""fedadam"": 3.15}"
+graded 8 clients / macro AUC,10,4,8.159999999999997,0.04281817283207848,1.4832311854364133,"{""fixed"": 3.3, ""fuzzy"": 2.7, ""proportional"": 1.7, ""search"": 2.3}"
+headroom 4 sites / macro AUC,20,5,23.0,0.00012662616998288385,1.3638871854351884,"{""fixed"": 4.45, ""noharm"": 3.05, ""half"": 2.6, ""search"": 2.4, ""fuzzy"": 2.5}"
+headroom graded / macro AUC,10,5,7.759999999999991,0.10077602688675769,1.928827755189312,"{""fixed"": 3.6, ""noharm"": 3.7, ""half"": 2.0, ""search"": 2.7, ""fuzzy"": 3.0}"

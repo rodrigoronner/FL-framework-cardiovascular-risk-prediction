@@ -97,7 +97,15 @@ class FuzzyFairnessController:
         n_train_universe: tuple = (0, 3200),
         epsilon_universe: tuple = (0, 20),
         multiplier_universe: tuple = (0.4, 2.2),
+        breakpoints: tuple = (0.15, 0.45, 0.55, 0.75),
+        rule_overrides: Optional[Dict] = None,
     ) -> None:
+        # ``breakpoints`` = (b1, b2, b3, b4): relative positions, on each
+        # input universe, of medium's left foot, medium's peak (= small's
+        # right foot), large's left foot and medium's right foot.
+        # ``rule_overrides`` maps (size term, epsilon term) -> output term
+        # and is used only by the sensitivity analysis.
+        b1, b2, b3, b4 = breakpoints
         n_lo, n_hi = n_train_universe
         e_lo, e_hi = epsilon_universe
         m_lo, m_hi = multiplier_universe
@@ -107,20 +115,20 @@ class FuzzyFairnessController:
         multiplier = fuzzy_ctrl.Consequent(np.linspace(m_lo, m_hi, 181), "multiplier")
 
         # Dataset-size membership functions: small / medium / large
-        n_train["small"] = fuzz.trimf(n_train.universe, [n_lo, n_lo, n_lo + 0.45 * (n_hi - n_lo)])
+        n_train["small"] = fuzz.trimf(n_train.universe, [n_lo, n_lo, n_lo + b2 * (n_hi - n_lo)])
         n_train["medium"] = fuzz.trimf(
             n_train.universe,
-            [n_lo + 0.15 * (n_hi - n_lo), n_lo + 0.45 * (n_hi - n_lo), n_lo + 0.75 * (n_hi - n_lo)],
+            [n_lo + b1 * (n_hi - n_lo), n_lo + b2 * (n_hi - n_lo), n_lo + b4 * (n_hi - n_lo)],
         )
-        n_train["large"] = fuzz.trimf(n_train.universe, [n_lo + 0.55 * (n_hi - n_lo), n_hi, n_hi])
+        n_train["large"] = fuzz.trimf(n_train.universe, [n_lo + b3 * (n_hi - n_lo), n_hi, n_hi])
 
         # Effective-epsilon membership functions: low / moderate / high
-        epsilon["low"] = fuzz.trimf(epsilon.universe, [e_lo, e_lo, e_lo + 0.45 * (e_hi - e_lo)])
+        epsilon["low"] = fuzz.trimf(epsilon.universe, [e_lo, e_lo, e_lo + b2 * (e_hi - e_lo)])
         epsilon["moderate"] = fuzz.trimf(
             epsilon.universe,
-            [e_lo + 0.15 * (e_hi - e_lo), e_lo + 0.45 * (e_hi - e_lo), e_lo + 0.75 * (e_hi - e_lo)],
+            [e_lo + b1 * (e_hi - e_lo), e_lo + b2 * (e_hi - e_lo), e_lo + b4 * (e_hi - e_lo)],
         )
-        epsilon["high"] = fuzz.trimf(epsilon.universe, [e_lo + 0.55 * (e_hi - e_lo), e_hi, e_hi])
+        epsilon["high"] = fuzz.trimf(epsilon.universe, [e_lo + b3 * (e_hi - e_lo), e_hi, e_hi])
 
         # Output membership functions: decrease / keep / increase batch size
         multiplier["decrease"] = fuzz.trimf(multiplier.universe, [m_lo, m_lo, 1.0])
@@ -128,22 +136,41 @@ class FuzzyFairnessController:
         multiplier["increase"] = fuzz.trimf(multiplier.universe, [1.0, m_hi, m_hi])
 
         # 3x3 rule base over (n_train, epsilon) -> multiplier.
-        rules = [
-            fuzzy_ctrl.Rule(n_train["small"] & epsilon["high"], multiplier["decrease"]),
-            fuzzy_ctrl.Rule(n_train["small"] & epsilon["moderate"], multiplier["decrease"]),
-            fuzzy_ctrl.Rule(n_train["small"] & epsilon["low"], multiplier["keep"]),
-            fuzzy_ctrl.Rule(n_train["medium"] & epsilon["high"], multiplier["decrease"]),
-            fuzzy_ctrl.Rule(n_train["medium"] & epsilon["moderate"], multiplier["keep"]),
-            fuzzy_ctrl.Rule(n_train["medium"] & epsilon["low"], multiplier["increase"]),
-            fuzzy_ctrl.Rule(n_train["large"] & epsilon["high"], multiplier["keep"]),
-            fuzzy_ctrl.Rule(n_train["large"] & epsilon["moderate"], multiplier["keep"]),
-            fuzzy_ctrl.Rule(n_train["large"] & epsilon["low"], multiplier["increase"]),
-        ]
+        table = {
+            ("small", "high"): "decrease", ("small", "moderate"): "decrease", ("small", "low"): "keep",
+            ("medium", "high"): "decrease", ("medium", "moderate"): "keep", ("medium", "low"): "increase",
+            ("large", "high"): "keep", ("large", "moderate"): "keep", ("large", "low"): "increase",
+        }
+        table.update(rule_overrides or {})
+        self.rule_table = dict(table)
+        rules = [fuzzy_ctrl.Rule(n_train[a] & epsilon[e], multiplier[o]) for (a, e), o in table.items()]
 
         self._n_train_var = n_train
         self._epsilon_var = epsilon
         self._multiplier_var = multiplier
         self._system = fuzzy_ctrl.ControlSystem(rules)
+
+    @classmethod
+    def for_federation(
+        cls, n_train_per_client: List[int], baseline_epsilons: List[float],
+        multiplier_universe: tuple = (0.4, 2.2), **kwargs,
+    ) -> "FuzzyFairnessController":
+        """Controller whose membership functions span the OBSERVED universe
+        of discourse of the audited federation: dataset size in
+        [min n_k, max n_k] and baseline epsilon in [min eps_k, max eps_k].
+        The rule base and the relative breakpoints are unchanged; only the
+        two input scales are read from the audit, which makes the
+        controller scale-free (the same rules apply to any federation).
+        Both inputs are public quantities (dataset sizes and accountant
+        outputs), so the allocation consumes no privacy budget."""
+        n_lo, n_hi = float(min(n_train_per_client)), float(max(n_train_per_client))
+        e_lo, e_hi = float(min(baseline_epsilons)), float(max(baseline_epsilons))
+        if n_hi - n_lo < 1e-9:
+            n_lo, n_hi = n_lo - 1.0, n_hi + 1.0
+        if e_hi - e_lo < 1e-9:
+            e_lo, e_hi = e_lo - 1e-3, e_hi + 1e-3
+        return cls(n_train_universe=(n_lo, n_hi), epsilon_universe=(e_lo, e_hi),
+                   multiplier_universe=multiplier_universe, **kwargs)
 
     def recommend_multiplier(self, n_train: int, epsilon: float) -> float:
         """Return the defuzzified (centroid) batch-size multiplier for a

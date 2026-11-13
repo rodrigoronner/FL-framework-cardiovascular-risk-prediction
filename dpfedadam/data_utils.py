@@ -1,20 +1,42 @@
 """
 data_utils.py - Data loading, harmonization, and preprocessing for the
-four-client federation. See data/README.md for dataset details and the
-top-level README's "Datasets" and "Preprocessing pipeline" sections for
-the full rationale behind the schema and pipeline choices below.
+four-client federation. See data/README.md for dataset details.
+
+Revision-1 protocol (what changed and why)
+------------------------------------------
+* H2 is the Mendeley "Cardiovascular Disease Dataset" (a single hospital,
+  1,000 patients). The former H2 (IEEE DataPort) is a merge of the UCI
+  Heart Disease sites and contained the H3 records, so the two clients
+  shared patients.
+* Exact duplicate records are removed from H3 before splitting, so one
+  patient cannot sit in both the training and the test fold.
+* No SMOTE. A synthetic minority point is an interpolation of several
+  real records, so per-example clipping no longer bounds one patient's
+  influence. Class imbalance is handled by the validation-calibrated
+  decision threshold instead (dpfedadam.evaluation).
+* Every transformation applied to the shared features is DATA
+  INDEPENDENT: clipping and scaling use fixed public physiological
+  ranges, and missing values are replaced by fixed clinical reference
+  values. Nothing is fitted to the patients, so preprocessing neither
+  leaks test information nor consumes privacy budget.
+* The single data-dependent step is the ranking of H1's ten site-only
+  features, computed on H1's TRAINING fold of the current partition.
+  It is a local, non-private preprocessing decision of that site and is
+  reported as such in the paper.
+* A feature a site does not record is structurally absent and is encoded
+  as a constant zero for that site (see FEATURE_AVAILABILITY).
 """
 
 from __future__ import annotations
 
+import os
 import warnings
+from functools import lru_cache
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-from flwr.common import Metrics
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MinMaxScaler
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -23,386 +45,228 @@ warnings.filterwarnings("ignore", category=UserWarning)
 # ---------------------------------------------------------------------------
 
 FILENAMES = [
-    "zalizadeh_sani.csv",   # H1 - Z-Alizadeh Sani
-    "ieee_chd.csv",         # H2 - IEEE Comprehensive Heart Disease
-    "cleveland.csv",        # H3 - UCI Cleveland Heart Disease
-    "kaggle_heart.csv",     # H4 - Cardiovascular Disease (sulianova)
+    "zalizadeh_sani.csv",   # H1 - Z-Alizadeh Sani (Tehran)
+    "mendeley_cvd.csv",     # H2 - Mendeley Cardiovascular Disease Dataset (India)
+    "cleveland.csv",        # H3 - UCI Heart Disease (four sites, US/EU)
+    "kaggle_heart.csv",     # H4 - Cardiovascular Disease dataset (sulianova), subsampled
 ]
+CLIENT_LABELS = ["H1", "H2", "H3", "H4"]
 
-# Column rename maps per dataset -> common 6-feature schema
-# Harmonized features: age, sex, trestbps (systolic BP), diaBP (diastolic BP),
-#                      chol (cholesterol), fbs (fasting blood glucose)
 COLUMN_MAPPINGS: List[Dict[str, str]] = [
-    # H1 - Z-Alizadeh Sani
-    {
-        "male": "sex",
-        "age": "age",
-        "totChol": "chol",
-        "sysBP": "trestbps",
-        "diaBP": "diaBP",
-        "glucose": "fbs",
-        "TenYearCHD": "target",
-        "Typical Chest Pain": "h1_typical_chest_pain",
-        "EF-TTE": "h1_ef_tte",
-        "Region RWMA": "h1_region_rwma",
-        "HTN": "h1_htn",
-        "TG": "h1_tg",
-        "K": "h1_k",
-        "Tinversion": "h1_tinversion",
-        "ESR": "h1_esr",
-        "Neut": "h1_neut",
-        "HDL": "h1_hdl",
-    },
-    # H2 - IEEE Comprehensive Heart Disease
-    {
-        "age": "age",
-        "sex": "sex",
-        "resting bp s": "trestbps",
-        "cholesterol": "chol",
-        "fasting blood sugar": "fbs",
-        "target": "target",
-    },
-    # H3 - UCI Cleveland
-    {
-        "age": "age",
-        "sex": "sex",
-        "trestbps": "trestbps",
-        "chol": "chol",
-        "fbs": "fbs",
-        "num": "target",
-    },
-    # H4 - Cardiovascular Disease dataset (sulianova). Cholesterol/glucose
-    # are on a 3-level ordinal scale, not continuous mg/dL.
-    {
-        "Age": "age",
-        "Gender": "sex",
-        "SystolicBP": "trestbps",
-        "DiastolicBP": "diaBP",
-        "Cholesterol": "chol",
-        "Glucose": "fbs",
-        "HeartDisease": "target",
-    },
+    {"male": "sex", "age": "age", "totChol": "chol", "sysBP": "trestbps",
+     "glucose": "fbs", "target": "target"},
+    {"age": "age", "gender": "sex", "restingBP": "trestbps",
+     "serumcholestrol": "chol", "fastingbloodsugar": "fbs", "target": "target"},
+    {"age": "age", "sex": "sex", "trestbps": "trestbps", "chol": "chol",
+     "fbs": "fbs", "num": "target"},
+    {"Age": "age", "Gender": "sex", "SystolicBP": "trestbps",
+     "DiastolicBP": "diaBP", "Cholesterol": "chol_ordinal",
+     "Glucose": "fbs_ordinal", "HeartDisease": "target"},
 ]
 
-# Harmonized feature set, same order for every client: base 6 shared
-# features + 6 one-hot columns for H4's ordinal chol/fbs categories
-# (zero for H1-H3) + H1's 10 extra native features (zero for H2-H4).
-# See README "Harmonized Schema" for the full rationale.
-H1_EXTRA_FEATURES = [
-    "h1_typical_chest_pain", "h1_ef_tte", "h1_region_rwma", "h1_htn",
-    "h1_tg", "h1_k", "h1_tinversion", "h1_esr", "h1_neut", "h1_hdl",
-]
+# Remove exact duplicate records before splitting? H3 carries two repeated
+# rows. H4's 63 coincident rows are distinct participants of a 70,000-row
+# survey who agree on six coarse fields, so they are kept.
+DROP_EXACT_DUPLICATES = [True, True, True, False]
 
-FINAL_FEATURES = [
-    "age", "sex", "trestbps", "diaBP", "chol", "fbs",
-    "chol_ord_1", "chol_ord_2", "chol_ord_3",
-    "fbs_ord_1", "fbs_ord_2", "fbs_ord_3",
-] + H1_EXTRA_FEATURES
+BASE_FEATURES = ["age", "sex", "trestbps", "diaBP", "chol", "fbs"]
 ONE_HOT_ORDINAL_FEATURES = ["chol_ord_1", "chol_ord_2", "chol_ord_3",
                              "fbs_ord_1", "fbs_ord_2", "fbs_ord_3"]
-# Index of the client (H4, 0-based) whose chol/fbs are native ordinal
-# categories rather than continuous/binary values.
+N_H1_EXTRA = 10
+H1_EXTRA_FEATURES = [f"h1_extra_{j+1}" for j in range(N_H1_EXTRA)]
+FINAL_FEATURES = BASE_FEATURES + ONE_HOT_ORDINAL_FEATURES + H1_EXTRA_FEATURES
 ORDINAL_CLIENT_INDEX = 3
-# Index of the client (H1, 0-based) whose extra native features are H1_EXTRA_FEATURES.
 EXTRA_FEATURE_CLIENT_INDEX = 0
 TARGET_COLUMN = "target"
+FBS_THRESHOLD_MG_DL = 120.0  # shared definition: fasting glucose > 120 mg/dL
+
+# Which shared features each site actually records with the same meaning.
+# "fbs" is the binary >120 mg/dL flag everywhere it is available; H4 only
+# has ordinal cholesterol/glucose categories, carried by the one-hot block.
+FEATURE_AVAILABILITY: Dict[str, List[bool]] = {
+    #            H1     H2     H3     H4
+    "age":      [True,  True,  True,  True],
+    "sex":      [True,  True,  True,  True],
+    "trestbps": [True,  True,  True,  True],
+    "diaBP":    [False, False, False, True],
+    "chol":     [True,  True,  True,  False],
+    "fbs":      [True,  True,  True,  False],
+}
+
+# Fixed public physiological ranges (lower, upper) used for clipping and
+# [0, 1] scaling, and fixed clinical reference values used for imputation.
+PUBLIC_RANGES: Dict[str, Tuple[float, float]] = {
+    "age": (18.0, 100.0), "sex": (0.0, 1.0), "trestbps": (70.0, 260.0),
+    "diaBP": (40.0, 160.0), "chol": (80.0, 600.0), "fbs": (0.0, 1.0),
+}
+REFERENCE_VALUES: Dict[str, float] = {
+    "age": 50.0, "sex": 0.0, "trestbps": 120.0, "diaBP": 80.0,
+    "chol": 200.0, "fbs": 0.0,
+}
+# Public ranges for H1's non-binary native candidates (binary flags use [0, 1]).
+H1_CANDIDATE_RANGES: Dict[str, Tuple[float, float]] = {
+    "h1c_bmi": (10, 60), "h1c_bun": (2, 100), "h1c_cr": (0.2, 5),
+    "h1c_ef_tte": (10, 80), "h1c_esr": (0, 150), "h1c_function_class": (0, 3),
+    "h1c_hb": (5, 20), "h1c_hdl": (10, 120), "h1c_k": (2.5, 7),
+    "h1c_ldl": (10, 300), "h1c_length": (120, 210), "h1c_lymph": (0, 100),
+    "h1c_na": (120, 160), "h1c_neut": (0, 100), "h1c_plt": (10, 1000),
+    "h1c_pr": (30, 200), "h1c_region_rwma": (0, 4), "h1c_tg": (20, 1200),
+    "h1c_vhd": (0, 3), "h1c_wbc": (1000, 30000), "h1c_weight": (30, 200),
+}
 
 
 # ---------------------------------------------------------------------------
-# Helper: IQR-based outlier capping
+# Loading and harmonization (no statistics are fitted here)
 # ---------------------------------------------------------------------------
 
-def _iqr_bounds(df_train: pd.DataFrame, features: List[str]) -> Dict[str, Tuple[float, float]]:
-    """Compute [Q1 - 1.5*IQR, Q3 + 1.5*IQR] bounds per feature from the
-    training fold only, to be applied to train/val/test without leakage."""
-    bounds: Dict[str, Tuple[float, float]] = {}
-    for col in features:
-        if col not in df_train.columns:
+def _scale(series: pd.Series, lo: float, hi: float) -> pd.Series:
+    return (series.clip(lower=lo, upper=hi) - lo) / (hi - lo)
+
+
+def _load_client_frame(i: int, data_dir: str) -> pd.DataFrame:
+    """Read client ``i`` and return its harmonized, already-scaled frame:
+    the shared features, H4's one-hot block, the target, and (H1 only)
+    every scaled ``h1c_*`` candidate column."""
+    raw = pd.read_csv(os.path.join(data_dir, FILENAMES[i]))
+    raw.columns = raw.columns.str.strip()
+    if DROP_EXACT_DUPLICATES[i]:
+        raw = raw.drop_duplicates().reset_index(drop=True)
+    raw = raw.rename(columns=COLUMN_MAPPINGS[i])
+    if TARGET_COLUMN not in raw.columns:
+        raise ValueError(f"Target column not found in {FILENAMES[i]} after mapping.")
+    raw = raw.apply(pd.to_numeric, errors="coerce")
+
+    out = pd.DataFrame(index=raw.index)
+    for col in BASE_FEATURES:
+        if not FEATURE_AVAILABILITY[col][i]:
+            out[col] = 0.0  # structurally absent at this site
             continue
-        # Binary/near-constant columns have no meaningful IQR outliers;
-        # capping them can collapse a skewed flag to a single value.
-        if df_train[col].nunique(dropna=True) <= 2:
-            continue
-        q1 = df_train[col].quantile(0.25)
-        q3 = df_train[col].quantile(0.75)
-        iqr = q3 - q1
-        bounds[col] = (q1 - 1.5 * iqr, q3 + 1.5 * iqr)
-    return bounds
+        values = raw[col]
+        if col == "fbs" and values.max(skipna=True) > 1:
+            # continuous mg/dL (H1) -> the shared binary >120 mg/dL flag
+            values = (values > FBS_THRESHOLD_MG_DL).astype(float).where(values.notna())
+        values = values.fillna(REFERENCE_VALUES[col])
+        out[col] = _scale(values, *PUBLIC_RANGES[col])
+
+    for level in (1, 2, 3):
+        if i == ORDINAL_CLIENT_INDEX:
+            out[f"chol_ord_{level}"] = (raw["chol_ordinal"] == level).astype(float)
+            out[f"fbs_ord_{level}"] = (raw["fbs_ordinal"] == level).astype(float)
+        else:
+            out[f"chol_ord_{level}"] = 0.0
+            out[f"fbs_ord_{level}"] = 0.0
+    out = out[BASE_FEATURES + ONE_HOT_ORDINAL_FEATURES].copy()
+
+    if i == EXTRA_FEATURE_CLIENT_INDEX:
+        for col in [c for c in raw.columns if c.startswith("h1c_")]:
+            lo, hi = H1_CANDIDATE_RANGES.get(col, (0.0, 1.0))
+            if col not in H1_CANDIDATE_RANGES and raw[col].dropna().isin([0, 1]).mean() < 1:
+                raise ValueError(f"No public range declared for non-binary column {col}")
+            out[col] = _scale(raw[col].fillna(lo), float(lo), float(hi))
+
+    out[TARGET_COLUMN] = (raw[TARGET_COLUMN] > 0).astype(int)
+    return out
 
 
-def _apply_iqr_cap(
-    df: pd.DataFrame, bounds: Dict[str, Tuple[float, float]]
-) -> pd.DataFrame:
-    """Clip each feature in ``df`` to the bounds computed from the training fold."""
-    df = df.copy()
-    for col, (lower, upper) in bounds.items():
-        df[col] = df[col].clip(lower=lower, upper=upper)
-    return df
+def _split(df: pd.DataFrame, val_size: float, test_size: float, random_state: int):
+    """Stratified train/val/test split (70/10/20 by default)."""
+    trainval, test = train_test_split(
+        df, test_size=test_size, random_state=random_state, stratify=df[TARGET_COLUMN]
+    )
+    train, val = train_test_split(
+        trainval, test_size=val_size / (1.0 - test_size),
+        random_state=random_state, stratify=trainval[TARGET_COLUMN],
+    )
+    return train, val, test
 
 
-# ---------------------------------------------------------------------------
-# Helper: SMOTE oversampling (training fold only)
-# ---------------------------------------------------------------------------
+def rank_h1_extra_features(df_train: pd.DataFrame, n_keep: int = N_H1_EXTRA) -> List[str]:
+    """Rank H1's native candidates by CatBoost importance on the TRAINING
+    fold only and return the top ``n_keep`` column names."""
+    from catboost import CatBoostClassifier
 
-def _apply_smote(
-    X: np.ndarray,
-    y: np.ndarray,
-    random_state: int = 42,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Apply SMOTE to balance classes. Falls back gracefully if imbalancedlearn
-    is not installed or if minority class has fewer than 2 samples."""
-    try:
-        from imblearn.over_sampling import SMOTE
+    candidates = sorted(c for c in df_train.columns if c.startswith("h1c_"))
+    model = CatBoostClassifier(
+        iterations=300, depth=4, learning_rate=0.05, random_seed=0,
+        verbose=0, thread_count=1, allow_writing_files=False,
+    )
+    model.fit(df_train[candidates], df_train[TARGET_COLUMN])
+    order = np.argsort(-model.get_feature_importance(), kind="stable")
+    return [candidates[j] for j in order[:n_keep]]
 
-        minority_count = int(y.sum())
-        if minority_count < 2:
-            return X, y
 
-        k = min(5, minority_count - 1)
-        sm = SMOTE(k_neighbors=k, random_state=random_state)
-        X_res, y_res = sm.fit_resample(X, y)
-        return X_res, y_res
-    except ImportError:
-        warnings.warn(
-            "imbalanced-learn not installed; skipping SMOTE. "
-            "Install with: pip install imbalanced-learn",
-            stacklevel=2,
-        )
-        return X, y
+@lru_cache(maxsize=64)
+def _prepare(data_dir: str, val_size: float, test_size: float, random_state: int):
+    train_sets, val_sets, test_sets, meta = [], [], [], []
+    for i in range(len(FILENAMES)):
+        df = _load_client_frame(i, data_dir)
+        train, val, test = _split(df, val_size, test_size, random_state)
+        selected: List[str] = []
+        if i == EXTRA_FEATURE_CLIENT_INDEX:
+            selected = rank_h1_extra_features(train)
+        folds = []
+        for fold in (train, val, test):
+            fold = fold.copy()
+            for slot, name in enumerate(H1_EXTRA_FEATURES):
+                fold[name] = fold[selected[slot]] if slot < len(selected) else 0.0
+            folds.append((
+                fold[FINAL_FEATURES].values.astype(np.float32),
+                fold[TARGET_COLUMN].values.astype(np.int64),
+            ))
+        train_sets.append(folds[0]); val_sets.append(folds[1]); test_sets.append(folds[2])
+        meta.append({
+            "client": CLIENT_LABELS[i], "file": FILENAMES[i], "n_total": len(df),
+            "n_train": len(train), "n_val": len(val), "n_test": len(test),
+            "positive_rate": float(df[TARGET_COLUMN].mean()),
+            "h1_selected_features": selected,
+        })
+    return train_sets, val_sets, test_sets, meta
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
-def get_pre_smote_train_sizes(
-    data_dir: str = ".",
-    val_size: float = 0.10,
-    test_size: float = 0.20,
-    random_state: int = 42,
-) -> List[int]:
-    """Per-client training-fold row count before SMOTE, in FILENAMES order.
-    Used by RDP accounting and the fuzzy fairness controller, which need
-    the real (pre-oversampling) population size."""
-    import os
-
-    sizes: List[int] = []
-    for i, filename in enumerate(FILENAMES):
-        df = pd.read_csv(os.path.join(data_dir, filename))
-        df.columns = df.columns.str.strip()
-        df.rename(columns=COLUMN_MAPPINGS[i], inplace=True)
-        if TARGET_COLUMN not in df.columns:
-            raise ValueError(
-                f"Target column '{TARGET_COLUMN}' not found in {filename} after mapping."
-            )
-        df[TARGET_COLUMN] = (
-            pd.to_numeric(df[TARGET_COLUMN], errors="coerce") > 0
-        ).astype(int)
-
-        df_trainval, _ = train_test_split(
-            df, test_size=test_size, random_state=random_state,
-            stratify=df[TARGET_COLUMN],
-        )
-        val_fraction_of_trainval = val_size / (1.0 - test_size)
-        df_train, _ = train_test_split(
-            df_trainval, test_size=val_fraction_of_trainval,
-            random_state=random_state, stratify=df_trainval[TARGET_COLUMN],
-        )
-        sizes.append(len(df_train))
-    return sizes
-
-
 def load_and_preprocess_data(
     data_dir: str = ".",
     val_size: float = 0.10,
     test_size: float = 0.20,
     random_state: int = 42,
+    verbose: bool = True,
 ) -> Tuple[
     Optional[List[Tuple[np.ndarray, np.ndarray]]],
     Optional[List[Tuple[np.ndarray, np.ndarray]]],
     Optional[List[Tuple[np.ndarray, np.ndarray]]],
     Optional[List[str]],
 ]:
-    """Load and harmonize all four client datasets. Pipeline per client:
-    target binarisation -> stratified 70/10/20 split -> IQR capping ->
-    median imputation -> SMOTE (train only) -> MinMaxScaler. See README
-    "Preprocessing pipeline" for the rationale.
-
-    Returns (client_train_datasets, client_val_datasets,
-    client_test_datasets, filenames); all None on load failure.
-    """
-    import os
-
-    print(f"--- Loading and Preprocessing Datasets for {len(FILENAMES)} Clients ---")
-    print(f"    Features: {FINAL_FEATURES}")
-    print(f"    Split: 70% train / {int(val_size*100)}% val / {int(test_size*100)}% test")
-
-    client_train_datasets: List[Tuple[np.ndarray, np.ndarray]] = []
-    client_val_datasets: List[Tuple[np.ndarray, np.ndarray]] = []
-    client_test_datasets: List[Tuple[np.ndarray, np.ndarray]] = []
-
-    for i, filename in enumerate(FILENAMES):
-        filepath = os.path.join(data_dir, filename)
-        try:
-            df = pd.read_csv(filepath)
-            df.columns = df.columns.str.strip()
-            df.rename(columns=COLUMN_MAPPINGS[i], inplace=True)
-
-            if TARGET_COLUMN not in df.columns:
-                raise ValueError(
-                    f"Target column '{TARGET_COLUMN}' not found in {filename} "
-                    f"after mapping. Found columns: {list(df.columns)}"
-                )
-
-            # Ensure every feature column exists (fill missing with NaN for imputation)
-            for col in FINAL_FEATURES:
-                if col not in df.columns:
-                    df[col] = np.nan
-
-            df = df[FINAL_FEATURES + [TARGET_COLUMN]].copy()
-
-            # One-hot encode H4's ordinal chol/fbs categories; zero elsewhere.
-            if i == ORDINAL_CLIENT_INDEX:
-                chol_codes = pd.to_numeric(df["chol"], errors="coerce")
-                fbs_codes = pd.to_numeric(df["fbs"], errors="coerce")
-                for level in (1, 2, 3):
-                    df[f"chol_ord_{level}"] = (chol_codes == level).astype(float)
-                    df[f"fbs_ord_{level}"] = (fbs_codes == level).astype(float)
-            else:
-                for col in ONE_HOT_ORDINAL_FEATURES:
-                    df[col] = 0.0
-
-            # Harmonise 'sex' string labels -> binary (1=Male, 0=Female).
-            if not pd.api.types.is_numeric_dtype(df["sex"]):
-                df["sex"] = (
-                    df["sex"].astype(str).str.strip().str.capitalize()
-                    .map({"Male": 1, "Female": 0})
-                    .fillna(pd.to_numeric(df["sex"], errors="coerce"))
-                )
-
-            # Coerce all columns to numeric
-            for col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors="coerce")
-
-            # Binarise target (any positive class -> 1)
-            df[TARGET_COLUMN] = (df[TARGET_COLUMN] > 0).astype(int)
-            y_full = df[TARGET_COLUMN].values
-
-            # Split first; every later statistic (IQR bounds, medians,
-            # scaler) is fit on the training fold only, no leakage.
-            df_trainval, df_test = train_test_split(
-                df,
-                test_size=test_size,
-                random_state=random_state,
-                stratify=y_full,
-            )
-            val_fraction_of_trainval = val_size / (1.0 - test_size)
-            df_train, df_val = train_test_split(
-                df_trainval,
-                test_size=val_fraction_of_trainval,
-                random_state=random_state,
-                stratify=df_trainval[TARGET_COLUMN],
-            )
-
-            iqr_bounds = _iqr_bounds(df_train, FINAL_FEATURES)
-            df_train = _apply_iqr_cap(df_train, iqr_bounds)
-            df_val = _apply_iqr_cap(df_val, iqr_bounds)
-            df_test = _apply_iqr_cap(df_test, iqr_bounds)
-
-            train_medians = df_train[FINAL_FEATURES].median()
-            for split_df in (df_train, df_val, df_test):
-                split_df[FINAL_FEATURES] = split_df[FINAL_FEATURES].fillna(train_medians)
-                split_df[FINAL_FEATURES] = split_df[FINAL_FEATURES].fillna(0)
-
-            X_train = df_train[FINAL_FEATURES].values.astype(np.float32)
-            y_train = df_train[TARGET_COLUMN].values.astype(np.int64)
-            X_val = df_val[FINAL_FEATURES].values.astype(np.float32)
-            y_val = df_val[TARGET_COLUMN].values.astype(np.int64)
-            X_test = df_test[FINAL_FEATURES].values.astype(np.float32)
-            y_test = df_test[TARGET_COLUMN].values.astype(np.int64)
-            y = y_full
-
-            X_train_res, y_train_res = _apply_smote(X_train, y_train, random_state)
-
-            scaler = MinMaxScaler()
-            scaler.fit(X_train)
-            X_train_scaled = scaler.transform(X_train_res)
-            X_val_scaled = scaler.transform(X_val)
-            X_test_scaled = scaler.transform(X_test)
-
-            client_train_datasets.append((X_train_scaled, y_train_res))
-            client_val_datasets.append((X_val_scaled, y_val))
-            client_test_datasets.append((X_test_scaled, y_test))
-
-            print(
-                f"  Client H{i+1} ({filename}): {len(df)} samples  |  "
-                f"train={len(y_train_res)} (post-SMOTE, raw={len(y_train)}), "
-                f"val={len(y_val)}, test={len(y_test)}, "
-                f"pos_rate_raw={y.mean():.1%}"
-            )
-
-        except FileNotFoundError:
-            print(
-                f"ERROR: '{filepath}' not found. "
-                "See data/README.md for download instructions."
-            )
-            return None, None, None, None
-        except Exception as exc:
-            print(f"ERROR processing {filename}: {exc}")
-            return None, None, None, None
-
-    return client_train_datasets, client_val_datasets, client_test_datasets, FILENAMES
+    """Load and harmonize the four client datasets. ``random_state`` is the
+    PARTITION seed. Returns (train, val, test, filenames); the training
+    folds contain real records only (no oversampling)."""
+    try:
+        train, val, test, meta = _prepare(os.path.abspath(data_dir), val_size, test_size, random_state)
+    except FileNotFoundError as exc:
+        print(f"ERROR: {exc}. See data/README.md for download instructions.")
+        return None, None, None, None
+    if verbose:
+        for m in meta:
+            print(f"  Client {m['client']} ({m['file']}): {m['n_total']} records | "
+                  f"train={m['n_train']}, val={m['n_val']}, test={m['n_test']}, "
+                  f"pos_rate={m['positive_rate']:.1%}")
+    return train, val, test, FILENAMES
 
 
-def aggregate_metrics_fn(metrics: List[Tuple[int, Metrics]]) -> Metrics:
-    """Weighted average of per-client evaluation metrics.
-
-    Used as the ``evaluate_metrics_aggregation_fn`` for Flower strategies.
-    Weights are proportional to each client's number of test examples.
-    """
-    if not metrics:
-        return {}
-
-    valid = [(n, m) for n, m in metrics if n > 0 and m]
-    if not valid:
-        return {}
-
-    total = sum(n for n, _ in valid)
-    if total == 0:
-        return {}
-
-    keys = ["accuracy", "precision", "recall", "f1_score"]
-    return {
-        k: sum(n * m[k] for n, m in valid if k in m) / total
-        for k in keys
-        if any(k in m for _, m in valid)
-    }
-
-
-def cluster_clients_by_distribution(
-    client_train_data: List[Tuple[np.ndarray, np.ndarray]],
-    n_clusters: int = 2,
+def get_partition_metadata(
+    data_dir: str = ".", val_size: float = 0.10, test_size: float = 0.20,
     random_state: int = 42,
-) -> Dict[str, int]:
-    """Partition clients into ``n_clusters`` groups by similarity of their
-    local feature distributions, for the FedCluster baseline.
+) -> List[Dict]:
+    """Fold sizes, prevalence and H1's selected features for one partition."""
+    return _prepare(os.path.abspath(data_dir), val_size, test_size, random_state)[3]
 
-    Each client is represented by the mean feature vector of its local
-    (already-scaled) training data; KMeans groups clients whose local
-    distributions are most alike. The FedCluster baseline's cited source
-    does not fully specify its clustering criterion, so this is this
-    project's concrete instantiation of "cluster by data-distribution
-    difference".
 
-    Returns
-    -------
-    dict mapping Flower client id string ("0", "1", ...) to cluster index.
-    """
-    from sklearn.cluster import KMeans
-
-    fingerprints = np.stack([X.mean(axis=0) for X, _ in client_train_data])
-    n_clusters = min(n_clusters, len(client_train_data))
-    labels = KMeans(n_clusters=n_clusters, random_state=random_state, n_init=10).fit_predict(
-        fingerprints
-    )
-    return {str(i): int(label) for i, label in enumerate(labels)}
+def get_train_sizes(
+    data_dir: str = ".", val_size: float = 0.10, test_size: float = 0.20,
+    random_state: int = 42,
+) -> List[int]:
+    """Per-client training-fold size, i.e. the number of real patients that
+    DP-SGD samples from. This is the n used by the privacy accountant."""
+    return [m["n_train"] for m in get_partition_metadata(data_dir, val_size, test_size, random_state)]

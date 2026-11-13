@@ -24,8 +24,7 @@ from .model import Net
 
 
 def load_model_from_ndarrays(ndarrays: List[np.ndarray], input_features: int) -> Net:
-    """Reconstruct a ``Net`` from a Flower strategy's final ndarray weights
-    (e.g. ``parameters_to_ndarrays(strategy.final_weights)``)."""
+    """Reconstruct a ``Net`` from a list of ndarray weights (state-dict order)."""
     model = Net(input_features=input_features)
     state_dict = model.state_dict()
     new_state = OrderedDict(
