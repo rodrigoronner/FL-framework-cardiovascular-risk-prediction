@@ -12,9 +12,9 @@ Four public cardiac cohorts with no shared patients act as hospitals. Each train
 
 * **Audit.** Under a common lot size of 32, the smallest site (H1, 211 training records) spends ε = 8.22 and the others ≈ 4.2 (δ = 10⁻⁵, σ = 2.5, 100 rounds, one local epoch): a 2.01× spread. With Poisson sampling a site's budget depends only on its number of lots per epoch.
 * **Allocation rules** (`experiments/revision_runner.py::allocate`): fixed lots; exact equalization (same lots per epoch everywhere); size-proportional; the fuzzy lot-size controller of the first submission (`dpfedadam/fuzzy_fairness.py`); and cap-based rules — *no harm* (only sites above the cap shrink their lots) and a *headroom fraction* f that lets the other sites enlarge theirs.
-* **Fuzzy headroom policy** (`experiments/headroom_study.py`): a nine-rule Mamdani policy that chooses f from two public properties of the federation, tested in a pre-registered study on twelve federations. Its protocol was frozen before any run: `experiments/headroom_study_protocol.md` (records the date and the SHA-256 of the code).
+* **Fuzzy headroom policy** (`experiments/headroom_study.py`): a nine-rule Mamdani policy that chooses f from two public properties of the federation, tested in a pre-specified study on twelve federations. Its protocol was frozen before any run: `experiments/headroom_study_protocol.md` (records the date and the SHA-256 of the code).
 
-Main results (20 partitions × 3 training seeds unless stated): no harm lowers the worst case from 8.22 to 5.98 and raises macro AUC from 0.777 to 0.787 without raising any other site's budget; exact equalization reaches 0.792 by raising the budgets of the three larger sites. In the pre-registered study the fuzzy policy met all three criteria (matched always-equalize, 0.784 vs 0.782, with mean client ε 5.81 vs 5.98, and beat never-spend by 0.006), while a fixed half-headroom rule did equally well.
+Main results (20 partitions × 3 training seeds unless stated): no harm lowers the worst case from 8.22 to 5.98 and raises macro AUC from 0.777 to 0.787 without raising any other site's budget; exact equalization reaches 0.792 by raising the budgets of the three larger sites. In the pre-specified study the fuzzy policy met all three criteria (matched always-equalize, 0.784 vs 0.782, with mean client ε 5.81 vs 5.98, and beat never-spend by 0.006), while a fixed half-headroom rule did equally well.
 
 ## Repository layout
 
@@ -33,7 +33,7 @@ experiments/
   revision_analysis.py    paired tests, Holm, Friedman/Nemenyi, MIA audit, subgroup recall
   revision_extras.py      deterministic analyses (controller sensitivity, rule firing, noise variance, horizon)
   revision_report.py      writes every table body and figure of the manuscript from the CSV files
-  headroom_study.py       pre-registered headroom study (federations, fuzzy policy, analysis)
+  headroom_study.py       pre-specified headroom study (federations, fuzzy policy, analysis)
   headroom_study_protocol.md  frozen protocol of that study
   check_data_integrity.py checks that no patient is shared between or duplicated within clients
   momentum_noise_check.py numerical check of the first-moment variance identity
@@ -65,7 +65,7 @@ Runs are deterministic given (partition seed, training seed, configuration); a f
 | Per-site audit, allocation rules (Tables 9–12, Figs. 1, 3, 6, 7) | `main_default`, `headroom`, `noise_variance_by_allocation.csv` |
 | Sensitivity to server hyperparameters | `main` |
 | Controller sensitivity, graded federation (Tables 13–14) | `fuzzy_sensitivity.csv`, `graded`, `graded_allocation.csv` |
-| Pre-registered headroom study (Tables 15–16, Fig. 4) | `headroom_study`, `headroom_study_fuzzy`, `headroom_study_design.csv` |
+| Pre-specified headroom study (Tables 15–16, Fig. 4) | `headroom_study`, `headroom_study_fuzzy`, `headroom_study_design.csv` |
 | Server optimizers with and without DP (Table 17) | `dp_optimizers`, `nodp`, `nodp_default` |
 | Local-only and pooled references (Table 18) | `nodp`, `nodp_default` |
 | Stronger privacy targets (Table 19, Fig. 5) | `eps_targets` |
